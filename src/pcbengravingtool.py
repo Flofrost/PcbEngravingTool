@@ -1,7 +1,7 @@
 import argparse, os
 import ezdxf.filemanagement
 
-from geometry import Line, Point, polygonize
+from geometry import Line, Vector2D, polygonize
 
 parser = argparse.ArgumentParser(
     prog="PCB Engraving Tool",
@@ -31,23 +31,26 @@ if not os.path.isfile(args.filename):
 
 dxffile = ezdxf.filemanagement.readfile(args.filename)
 
-lines: list[Line] = []
+geometry: list[Line] = []
 
 for entity in dxffile.entities:
     entityType = entity.dxftype()
 
     if entityType == "LINE":
-        lines.append(Line(
-            Point(*entity.get_dxf_attrib("start").vec2),
-            Point(*entity.get_dxf_attrib("end").vec2)
+        geometry.append(Line(
+            Vector2D(*entity.get_dxf_attrib("start").vec2),
+            Vector2D(*entity.get_dxf_attrib("end").vec2)
         ))
 
-polygons = polygonize(lines)
+polygons = polygonize(geometry)
 
 import matplotlib.pyplot as plt
 
 fig, ax = plt.subplots()
 for pg in polygons:
+    pg.calculate_normals()
     ax.plot([p.x for p in pg.points], [p.y for p in pg.points])
+    ax.scatter([n.x for n in pg.edgeNormals], [n.y for n in pg.edgeNormals])
 plt.show(block=True)
+
 
