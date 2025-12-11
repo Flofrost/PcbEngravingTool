@@ -1,7 +1,7 @@
 import argparse, os
 import ezdxf.filemanagement
 
-from geometry import Line, Vector2D, inflate, polygonize
+from geometry import Line, Vector2D, inflatePolygon, polygonize
 
 parser = argparse.ArgumentParser(
     prog="PCB Engraving Tool",
@@ -44,12 +44,15 @@ for entity in dxffile.entities:
 
 polygons = polygonize(geometry)
 for p in polygons: 
+    # p.oversample()
     p.calculate_normals()
-biggerPolygons = [inflate(p, 0.2) for p in polygons]
+biggerPolygons = [inflatePolygon(p, 0.2) for p in polygons]
 
 import graphics
 
 graphics.plotGeometries(polygons, color="blue")
+graphics.plotEdgeNormals(polygons, color="orange")
 graphics.plotVertexNormals(polygons, color="red")
+graphics.plotGeometries(biggerPolygons, color="green")
 graphics.show()
 

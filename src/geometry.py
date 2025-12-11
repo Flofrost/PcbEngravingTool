@@ -34,16 +34,20 @@ class Vector2D:
     def __truediv__(self, other: float) -> Vector2D:
         return Vector2D(self.x / other, self.y / other)
 
-    # Calculate euclidian distance
     def distanceTo(self, other: Vector2D) -> float:
+        """Calculate euclidian distance"""
         diff = self - other
         return sqrt(diff.x ** 2 + diff.y ** 2)
+
+    def dot(self, other: Vector2D) -> float:
+        """ Calculate dot product"""
+        return self.x * other.x + self.y * other.y
 
     def modulus(self) -> float:
         return sqrt(self.x ** 2 + self.y ** 2)
 
     def angle(self) -> float:
-        if abs(self.x) < 0.00000000000001: return 0
+        if abs(self.x) < 0.00000000000001: return pi/2 if self.y > 0 else -pi/2
         angle = atan(self.y / self.x)
         return angle + pi if self.x < 0 else angle
 
@@ -92,7 +96,18 @@ class Polygon:
             v1 = p3 - p2
             v2 = p1 - p2
             a = (v1.angle() + v2.angle()) / 2
-            self.vertexNormals[i-1] = Vector2D(cos(a), sin(a))
+            n = Vector2D(cos(a), sin(a))
+            if n.dot(self.edgeNormals[i-1]) < 0:
+                n *= -1
+            self.vertexNormals[i-1] = n
+
+    def oversample(self):
+        newPoints = [
+            (self.points[i-1] + self.points[i]) / 2
+            for i in range(len(self.points))
+        ]
+
+        self.points = [val for pair in zip(newPoints, self.points) for val in pair]
 
 @dataclass
 class Circle:
@@ -102,6 +117,7 @@ class Circle:
 
 
 Geometry = Circle | Polygon | Line
+
 
 
 def polygonize(lines: list[Line]) -> list[Polygon]:
@@ -118,11 +134,10 @@ def polygonize(lines: list[Line]) -> list[Polygon]:
 
     return polygons
 
-def inflate(polygon: Polygon, amount_mm: float) -> Polygon:
+def inflatePolygon(polygon: Polygon, amount_mm: float) -> Polygon:
     if not len(polygon.vertexNormals): raise Exception("Polygon's normals have not been calculated")
 
     return Polygon([
-        point + normal * amount_mm
-        for point, normal in zip(polygon.points, polygon.vertexNormals)
+        point + vertexNormal * amount_mm / vertexNormal.dot(edgeNormal)
+        for point, vertexNormal, edgeNormal in zip(polygon.points, polygon.vertexNormals, polygon.edgeNormals)
     ])
-    
