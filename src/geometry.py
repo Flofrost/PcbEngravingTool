@@ -28,6 +28,12 @@ class Vector2D:
     def __sub__(self, other: Vector2D) -> Vector2D:
         return Vector2D(self.x - other.x, self.y - other.y)
 
+    def __mul__(self, other: float) -> Vector2D:
+        return Vector2D(self.x * other, self.y * other)
+
+    def __truediv__(self, other: float) -> Vector2D:
+        return Vector2D(self.x / other, self.y / other)
+
     # Calculate euclidian distance
     def distanceTo(self, other: Vector2D) -> float:
         diff = self - other
@@ -40,10 +46,6 @@ class Vector2D:
         if abs(self.x) < 0.00000000000001: return 0
         angle = atan(self.y / self.x)
         return angle + pi if self.x < 0 else angle
-
-    def scale(self, scalar: float):
-        self.x *= scalar
-        self.y *= scalar
 
 
 @dataclass
@@ -80,19 +82,14 @@ class Polygon:
         for i in range(len(self.points)):
             p1, p2 = self.points[i-1], self.points[i]
             diff = p1 - p2                    # Take Difference
-            diff.scale(1/diff.modulus())      # Normalize
+            diff /= diff.modulus()            # Normalize
             diff.x, diff.y = diff.y, -diff.x  # Rotate by 90deg
             self.edgeNormals[i] = diff
-            # self.edgeNormals[i] += self.points[i]
 
         # Calculating Vertex Normals
         for i in range(len(self.points)):
             p1, p2 = self.edgeNormals[i-1], self.edgeNormals[i]
-            vertexNormalAngle = p1.angle() + p2.angle()
-            vertexNormalAngle /= 2
-            self.vertexNormals[i] = Vector2D(cos(vertexNormalAngle), sin(vertexNormalAngle))
-            # self.vertexNormals[i].scale(1/10)
-            # self.vertexNormals[i] += self.points[i]
+            self.vertexNormals[i-1] = (p1 + p2) / 2
 
 
 
@@ -114,3 +111,12 @@ def polygonize(lines: list[Line]) -> list[Polygon]:
         previousLine = line
 
     return polygons
+
+def inflate(polygon: Polygon, amount_mm: float) -> Polygon:
+    if not len(polygon.vertexNormals): raise Exception("Polygon's normals have not been calculated")
+
+    return Polygon([
+        point + normal * amount_mm
+        for point, normal in zip(polygon.points, polygon.vertexNormals)
+    ])
+    

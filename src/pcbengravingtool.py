@@ -1,7 +1,7 @@
 import argparse, os
 import ezdxf.filemanagement
 
-from geometry import Line, Vector2D, polygonize
+from geometry import Line, Vector2D, inflate, polygonize
 
 parser = argparse.ArgumentParser(
     prog="PCB Engraving Tool",
@@ -43,15 +43,18 @@ for entity in dxffile.entities:
         ))
 
 polygons = polygonize(geometry)
+for p in polygons: 
+    p.calculate_normals()
+biggerPolygons = [inflate(p, 0.2) for p in polygons]
 
 import matplotlib.pyplot as plt
 
 fig, ax = plt.subplots()
-for pg in polygons:
-    pg.calculate_normals()
-    ax.plot([p.x for p in pg.points], [p.y for p in pg.points])
-    ax.scatter([n.x for n in pg.edgeNormals], [n.y for n in pg.edgeNormals], marker="x")
-    ax.scatter([n.x for n in pg.vertexNormals], [n.y for n in pg.vertexNormals], marker=".")
+for pg, ipg in zip(polygons, biggerPolygons):
+    ax.plot([p.x for p in pg.points + [pg.points[0]]], [p.y for p in pg.points + [pg.points[0]]])
+    # ax.plot([p.x for p in ipg.points + [ipg.points[0]]], [p.y for p in ipg.points + [ipg.points[0]]])
+    ax.scatter([n.x/20+p.x for p,n in zip(pg.points, pg.edgeNormals)], [n.y/20+p.y for p,n in zip(pg.points, pg.edgeNormals)], marker="x")
+    ax.scatter([n.x/20+p.x for p,n in zip(pg.points, pg.vertexNormals)], [n.y/20+p.y for p,n in zip(pg.points, pg.vertexNormals)], marker=".")
 plt.show(block=True)
 
 
