@@ -50,7 +50,8 @@ fig, ax = plt.subplots()
 for pg in polygons:
     pg.calculate_normals()
     ax.plot([p.x for p in pg.points], [p.y for p in pg.points])
-    ax.scatter([n.x for n in pg.edgeNormals], [n.y for n in pg.edgeNormals])
+    ax.scatter([n.x for n in pg.edgeNormals], [n.y for n in pg.edgeNormals], marker="x")
+    ax.scatter([n.x for n in pg.vertexNormals], [n.y for n in pg.vertexNormals], marker=".")
 plt.show(block=True)
 
 

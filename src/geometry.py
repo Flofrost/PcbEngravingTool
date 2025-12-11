@@ -1,6 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
-from math import sqrt
+from math import cos, pi, sin, sqrt, atan
 
 @dataclass
 class Vector2D:
@@ -33,8 +33,13 @@ class Vector2D:
         diff = self - other
         return sqrt(diff.x ** 2 + diff.y ** 2)
 
-    def modulus(self):
+    def modulus(self) -> float:
         return sqrt(self.x ** 2 + self.y ** 2)
+
+    def angle(self) -> float:
+        if abs(self.x) < 0.00000000000001: return 0
+        angle = atan(self.y / self.x)
+        return angle + pi if self.x < 0 else angle
 
     def scale(self, scalar: float):
         self.x *= scalar
@@ -71,16 +76,23 @@ class Polygon:
         if not len(self.edgeNormals): self.edgeNormals = [Vector2D(0,0) for _ in self.points]
         if not len(self.vertexNormals): self.vertexNormals = [Vector2D(0,0) for _ in self.points]
 
+        # Calculating Edge Normals
         for i in range(len(self.points)):
             p1, p2 = self.points[i-1], self.points[i]
-            diff = p1 - p2
-            mod = diff.modulus()
-            diff.scale(1/mod)
-            diff.scale(1/100)
-            diff.x, diff.y = diff.y, -diff.x
-            avg = p1 + p2
-            avg.scale(1/2)
-            self.edgeNormals[i] = diff + avg
+            diff = p1 - p2                    # Take Difference
+            diff.scale(1/diff.modulus())      # Normalize
+            diff.x, diff.y = diff.y, -diff.x  # Rotate by 90deg
+            self.edgeNormals[i] = diff
+            # self.edgeNormals[i] += self.points[i]
+
+        # Calculating Vertex Normals
+        for i in range(len(self.points)):
+            p1, p2 = self.edgeNormals[i-1], self.edgeNormals[i]
+            vertexNormalAngle = p1.angle() + p2.angle()
+            vertexNormalAngle /= 2
+            self.vertexNormals[i] = Vector2D(cos(vertexNormalAngle), sin(vertexNormalAngle))
+            # self.vertexNormals[i].scale(1/10)
+            # self.vertexNormals[i] += self.points[i]
 
 
 
