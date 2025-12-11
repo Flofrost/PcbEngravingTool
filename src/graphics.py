@@ -1,0 +1,39 @@
+from typing import Sequence
+import matplotlib.pyplot as plt
+
+from geometry import Geometry, Polygon 
+
+fig, ax = plt.subplots()
+ax.axis("equal")
+normalScaleFactor = 1/15
+
+def plotGeometries(geometries: Sequence[Geometry], color = None, format="-"):
+    for g in geometries:
+        if isinstance(g, Polygon):
+            ax.plot(
+                [p.x for p in g.points + [g.points[0]]],
+                [p.y for p in g.points + [g.points[0]]],
+                format,
+                color = color
+            )
+
+def plotEdgeNormals(polygons: Sequence[Polygon], color = None):
+    for p in polygons:
+        for p, n in zip(p.points, p.edgeNormals):
+            ax.plot(
+                [p.x, p.x + n.x * normalScaleFactor],
+                [p.y, p.y + n.y * normalScaleFactor],
+                color = color
+            )
+
+def plotVertexNormals(polygons: Sequence[Polygon], color = None):
+    for p in polygons:
+        for p, n in zip(p.points, p.vertexNormals):
+            ax.plot(
+                [p.x, p.x + n.x * normalScaleFactor],
+                [p.y, p.y + n.y * normalScaleFactor],
+                color = color
+            )
+
+def show():
+    plt.show(block=True)

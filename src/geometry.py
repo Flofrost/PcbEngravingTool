@@ -84,19 +84,24 @@ class Polygon:
             diff = p1 - p2                    # Take Difference
             diff /= diff.modulus()            # Normalize
             diff.x, diff.y = diff.y, -diff.x  # Rotate by 90deg
-            self.edgeNormals[i] = diff
+            self.edgeNormals[i-1] = diff
 
         # Calculating Vertex Normals
         for i in range(len(self.points)):
-            p1, p2 = self.edgeNormals[i-1], self.edgeNormals[i]
-            self.vertexNormals[i-1] = (p1 + p2) / 2
-
-
+            p1, p2, p3 = self.points[i-2], self.points[i-1], self.points[i]
+            v1 = p3 - p2
+            v2 = p1 - p2
+            a = (v1.angle() + v2.angle()) / 2
+            self.vertexNormals[i-1] = Vector2D(cos(a), sin(a))
 
 @dataclass
 class Circle:
     center: Vector2D
     radius: float
+
+
+
+Geometry = Circle | Polygon | Line
 
 
 def polygonize(lines: list[Line]) -> list[Polygon]:
@@ -105,7 +110,8 @@ def polygonize(lines: list[Line]) -> list[Polygon]:
 
     for line in lines[1:]:
         if line.start.distanceTo(previousLine.end) < 0.001:
-            polygons[-1].points.append(line.start)
+            if line.start.distanceTo(line.end) > 0.01:
+                polygons[-1].points.append(line.start)
         else:
             polygons.append(Polygon([line.start]))
         previousLine = line
