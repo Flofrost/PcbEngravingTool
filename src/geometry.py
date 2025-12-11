@@ -2,6 +2,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from math import cos, pi, sin, sqrt, atan
 
+from ezdxf.filemanagement import new
+from numpy import insert
+
+basicallyZero = 0.000000001
+
 @dataclass
 class Vector2D:
     x: float
@@ -47,7 +52,7 @@ class Vector2D:
         return sqrt(self.x ** 2 + self.y ** 2)
 
     def angle(self) -> float:
-        if abs(self.x) < 0.00000000000001: return pi/2 if self.y > 0 else -pi/2
+        if abs(self.x) < basicallyZero: return pi/2 if self.y > 0 else -pi/2
         angle = atan(self.y / self.x)
         return angle + pi if self.x < 0 else angle
 
@@ -57,20 +62,14 @@ class Line:
     start: Vector2D
     end: Vector2D
 
-    def __getitem__(self, key):
-        if not isinstance(key, int): raise Exception("An integer should be used to index in a Point")
-        if key > 1: raise Exception("Index out of range")
+    def length(self) -> float:
+        return self.start.distanceTo(self.end)
 
-        if key: return self.start
-        return self.end
-
-    def __setitem__(self, key, value):
-        if not isinstance(key, int): raise Exception("An integer should be used to index in a Point")
-        if key > 1: raise Exception("Index out of range")
-        if not isinstance(value, Vector2D): raise Exception("Value assigned to Point should be a float")
-
-        if key: self.y = value
-        self.x = value
+    # def intersects(self, other: Line) -> Vector2D | None:
+    #     if self.start.x - self.end.x < basicallyZero:
+    #         if self.start.x > other.start.x and self.end.x
+    #     if other.start.x - other.end.x < basicallyZero:
+    #         ...
 
 @dataclass
 class Polygon:
@@ -126,7 +125,7 @@ def polygonize(lines: list[Line]) -> list[Polygon]:
 
     for line in lines[1:]:
         if line.start.distanceTo(previousLine.end) < 0.001:
-            if line.start.distanceTo(line.end) > 0.01:
+            if line.start.distanceTo(line.end) > 0.02:
                 polygons[-1].points.append(line.start)
         else:
             polygons.append(Polygon([line.start]))
@@ -137,7 +136,23 @@ def polygonize(lines: list[Line]) -> list[Polygon]:
 def inflatePolygon(polygon: Polygon, amount_mm: float) -> Polygon:
     if not len(polygon.vertexNormals): raise Exception("Polygon's normals have not been calculated")
 
-    return Polygon([
-        point + vertexNormal * amount_mm / vertexNormal.dot(edgeNormal)
-        for point, vertexNormal, edgeNormal in zip(polygon.points, polygon.vertexNormals, polygon.edgeNormals)
-    ])
+    # newPolygon = Polygon([
+    #     point + vertexNormal * amount_mm / vertexNormal.dot(edgeNormal)
+    #     for point, vertexNormal, edgeNormal in zip(polygon.points, polygon.vertexNormals, polygon.edgeNormals)
+    # ])
+
+    lines = [
+        Line(polygon.points[i-1], polygon.points[i])
+        for i in range(len(polygon.points))
+    ]
+
+    newPolygon = Polygon([])
+    for i, line in enumerate(lines):
+        newLine = Line(line.start, line.end)
+        newLine.start += polygon.edgeNormals[i-1] * amount_mm
+        newLine.end   += polygon.edgeNormals[i-1] * amount_mm
+
+        newPolygon.points.append(newLine.start)
+        newPolygon.points.append(newLine.end)
+
+    return newPolygon

@@ -53,6 +53,6 @@ import graphics
 graphics.plotGeometries(polygons, color="blue")
 graphics.plotEdgeNormals(polygons, color="orange")
 graphics.plotVertexNormals(polygons, color="red")
-graphics.plotGeometries(biggerPolygons, color="green")
+graphics.plotGeometries(biggerPolygons, color="green", format="x-")
 graphics.show()
 

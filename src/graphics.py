@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 
 from geometry import Geometry, Polygon 
 
+plt.style.use("dark_background")
 fig, ax = plt.subplots()
 ax.axis("equal")
 normalScaleFactor = 1/15
