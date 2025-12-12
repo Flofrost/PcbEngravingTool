@@ -1,4 +1,5 @@
 from typing import Sequence
+from matplotlib import colormaps
 import matplotlib.pyplot as plt
 
 from geometry import Geometry, Line, Polygon 
@@ -42,6 +43,14 @@ def plotVertexNormals(polygons: Sequence[Polygon], color = None):
                 [p.y, p.y + n.y * normalScaleFactor],
                 color = color
             )
+
+def plotLinesRainbow(lines: list[Line]):
+    for i, l in enumerate(lines):
+        ax.plot(
+            [l.start.x, l.end.x],
+            [l.start.y, l.end.y],
+            color=colormaps["hsv"](5*i/len(lines)%1)
+        )
 
 def show(): plt.show(block=True)
 def clear(): ax.clear()

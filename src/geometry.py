@@ -4,6 +4,7 @@ from math import cos, pi, sin, sqrt, atan
 
 
 basicallyZero = 0.000000001
+fusionTolerance = 0.05
 
 @dataclass
 class Vector2D:
@@ -36,6 +37,9 @@ class Vector2D:
 
     def __truediv__(self, other: float) -> Vector2D:
         return Vector2D(self.x / other, self.y / other)
+
+    def __hash__(self):
+        return hash(self.x.__hash__() + self.y.__hash__())
 
     def distanceTo(self, other: Vector2D) -> float:
         """Calculate euclidian distance"""
@@ -73,7 +77,7 @@ class Line:
     def vector(self) -> Vector2D:
         return self.end - self.start
 
-    def project(self, other: Line) -> tuple[float, float]:
+    def projectToNormal(self, other: Line) -> tuple[float, float]:
         """
         Calculates the projection of the other line on the self's normal
         The function returns two distances being the projections
@@ -89,8 +93,8 @@ class Line:
         return startDistance, endDistance
 
     def intersects(self, other: Line) -> Vector2D | None:
-        (ds1, de1) = self.project(other)
-        (ds2, de2) = other.project(self)
+        (ds1, de1) = self.projectToNormal(other)
+        (ds2, de2) = other.projectToNormal(self)
 
         # Here both lines are on the same axis
         if  abs(ds1) < basicallyZero and\
@@ -103,7 +107,6 @@ class Line:
             ds2 = self.end.dot(other.start - self.end)
             de2 = self.end.dot(other.end - self.end)
 
-            print(ds1, de1, ds2, de2)
             if ds1 * de1 > 0 and ds2 * de2 > 0:
                 return
             if ds1 * de1 > 0:
@@ -119,10 +122,10 @@ class Line:
             return
 
         correctionFactor = sin(self.vector().angle() - other.vector().angle())
-        print(correctionFactor)
-        if abs(correctionFactor) < basicallyZero:
-            return other.start
+        # if abs(correctionFactor) < basicallyZero:
+        #     return other.start
         return self.start + self.vector() / self.length() * ds2 / correctionFactor
+
 @dataclass
 class Polygon:
     points: list[Vector2D]
@@ -160,6 +163,43 @@ class Polygon:
 
         self.points = [val for pair in zip(newPoints, self.points) for val in pair]
 
+    def breakAppart(self) -> list[Line]:
+        return [
+            Line(self.points[i-1], self.points[i])
+            for i in range(len(self.points))
+        ]
+
+    def inflate(self, amount_mm: float) -> Polygon:
+        self.calculate_normals()
+        lines = self.breakAppart()
+
+        newLines = [
+            Line(
+                line.start + self.edgeNormals[i-1] * amount_mm,
+                line.end   + self.edgeNormals[i-1] * amount_mm,
+            ) for i, line in enumerate(lines)
+        ]
+
+        tempPolygon = Polygon([p for line in newLines for p in [line.start, line.end]]) 
+
+        index = 0
+        while index < len(tempPolygon.points):
+            p1 = tempPolygon.points[index-1]
+            p2 = tempPolygon.points[index] 
+            if p1.distanceTo(p2) < fusionTolerance:
+                tempPolygon.points[index - 1] = (p1 + p2) / 2
+                tempPolygon.points.pop(index)
+            index += 1
+
+        newLines = tempPolygon.breakAppart()
+
+        import graphics
+        graphics.plotLinesRainbow(newLines)
+
+        newLines = sweepingLineIntersection(newLines)
+
+        return Polygon([line.start for line in newLines]) 
+
 @dataclass
 class Circle:
     center: Vector2D
@@ -176,9 +216,8 @@ def polygonize(lines: list[Line]) -> list[Polygon]:
     previousLine = lines[0]
 
     for line in lines[1:]:
-        if line.start.distanceTo(previousLine.end) < 0.001:
-            if line.start.distanceTo(line.end) > 0.02:
-                polygons[-1].points.append(line.start)
+        if line.start.distanceTo(previousLine.end) < fusionTolerance:
+            polygons[-1].points.append(line.start)
         else:
             polygons.append(Polygon([line.start]))
         previousLine = line
@@ -187,21 +226,23 @@ def polygonize(lines: list[Line]) -> list[Polygon]:
 
 def sweepingLineIntersection(lines: list[Line]) -> list[Line]:
     @dataclass
+    class Intersection:
+        point: Vector2D
+        withIndex: int
+
+    @dataclass
     class SweepingLineIntersectionStruct:
         line: Line
         index: int
-        intersectWithIndex: list[int] = field(default_factory=lambda: [])
-        intersectionPoints: list[Vector2D] = field(default_factory=lambda: [])
+        intersections: dict[int, Intersection] = field(default_factory=lambda: {})
 
-    sortedLines = [
-        SweepingLineIntersectionStruct(
-            Line(
-                line.start if line.start.x < line.end.x else line.end,
-                line.start if line.start.x > line.end.x else line.end
-            ), i)
-        for i, line in enumerate(lines)
-    ]
-    sortedLines.sort(key=lambda sl: min(sl.line.start.x, sl.line.end.x))
+    sortedLines: list[SweepingLineIntersectionStruct] = []
+    for i, line in enumerate(lines):
+        if line.start.x < line.end.x:
+            sortedLines.append(SweepingLineIntersectionStruct(Line(line.start, line.end), i))
+        else:
+            sortedLines.append(SweepingLineIntersectionStruct(Line(line.end, line.start), i))
+    sortedLines.sort(key=lambda sl: sl.line.start.x)
 
     evaluationBucket:list [SweepingLineIntersectionStruct] = []
     for sl in sortedLines:
@@ -209,33 +250,42 @@ def sweepingLineIntersection(lines: list[Line]) -> list[Line]:
         for e in elementsToRemove: evaluationBucket.remove(e)
 
         evaluationBucket.append(sl)
+        for i in range(len(evaluationBucket) - 1):
+            evaluee1 = evaluationBucket[i]
+            for evaluee2 in evaluationBucket[i+1:]:
+                intersection = evaluee1.line.intersects(evaluee2.line)
+                if intersection is None: continue
+                if intersection.distanceTo(evaluee1.line.start) < basicallyZero: continue
+                if intersection.distanceTo(evaluee1.line.end) < basicallyZero: continue
+                # graphics.ax.scatter(intersection.x, intersection.y, color="white")
+                evaluee1.intersections[evaluee2.index] = Intersection(intersection, evaluee2.index)
+                evaluee2.intersections[evaluee1.index] = Intersection(intersection, evaluee1.index)
 
-    return []
+    newLines: list[Line] = []
+    sortedLines.sort(key=lambda sl: sl.index)
+    index = 0
+    while index < len(sortedLines):
+        newLines.append(lines[index])
 
-def inflatePolygon(polygon: Polygon, amount_mm: float) -> Polygon:
-    if not len(polygon.edgeNormals): raise Exception("Polygon's normals have not been calculated")
+        if sortedLines[index].intersections:
+            selectedIntersection = None
+            for intersection in sortedLines[index].intersections.values():
+                if sortedLines[intersection.withIndex].intersections.get(index):
+                    selectedIntersection = intersection
+                    break
 
-    # newPolygon = Polygon([
-    #     point + vertexNormal * amount_mm / vertexNormal.dot(edgeNormal)
-    #     for point, vertexNormal, edgeNormal in zip(polygon.points, polygon.vertexNormals, polygon.edgeNormals)
-    # ])
+            if selectedIntersection is None:
+                import graphics
+                graphics.show()
+                raise Exception("no valid interception")
 
-    lines = [
-        Line(polygon.points[i-1], polygon.points[i])
-        for i in range(len(polygon.points))
-    ]
+            newLines[-1].end = selectedIntersection.point 
+            lines[selectedIntersection.withIndex].start = selectedIntersection.point
+            sortedLines[selectedIntersection.withIndex].intersections.pop(index)
+            index = selectedIntersection.withIndex
+        else:
+            index += 1
 
-    newLines = []
-    newPolygon = Polygon([])
-    for i, line in enumerate(lines):
-        newLine = Line(line.start, line.end)
-        newLine.start += polygon.edgeNormals[i-1] * amount_mm
-        newLine.end   += polygon.edgeNormals[i-1] * amount_mm
-    
-        newLines.append(newLine)
-        newPolygon.points.append(newLine.start)
-        newPolygon.points.append(newLine.end)
+    return newLines
 
-    # sweepingLineIntersection(newLines)
 
-    return newPolygon
