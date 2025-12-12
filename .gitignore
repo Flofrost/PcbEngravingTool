@@ -1,3 +1,4 @@
 .env/
 __pycache__/
 testschema/
+test_*.py

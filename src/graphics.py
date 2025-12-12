@@ -1,7 +1,7 @@
 from typing import Sequence
 import matplotlib.pyplot as plt
 
-from geometry import Geometry, Polygon 
+from geometry import Geometry, Line, Polygon 
 
 plt.style.use("dark_background")
 fig, ax = plt.subplots()
@@ -14,6 +14,13 @@ def plotGeometries(geometries: Sequence[Geometry], color = None, format="-"):
             ax.plot(
                 [p.x for p in g.points + [g.points[0]]],
                 [p.y for p in g.points + [g.points[0]]],
+                format,
+                color = color
+            )
+        if isinstance(g, Line):
+            ax.plot(
+                [g.start.x, g.end.x],
+                [g.start.y, g.end.y],
                 format,
                 color = color
             )
@@ -36,5 +43,6 @@ def plotVertexNormals(polygons: Sequence[Polygon], color = None):
                 color = color
             )
 
-def show():
-    plt.show(block=True)
+def show(): plt.show(block=True)
+def clear(): ax.clear()
+

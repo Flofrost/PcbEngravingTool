@@ -2,8 +2,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from math import cos, pi, sin, sqrt, atan
 
-from ezdxf.filemanagement import new
-from numpy import insert
 
 basicallyZero = 0.000000001
 
@@ -56,6 +54,13 @@ class Vector2D:
         angle = atan(self.y / self.x)
         return angle + pi if self.x < 0 else angle
 
+@dataclass
+class EquationAffine:
+    coefficient: float
+    zeroValue: float
+
+    def evaluate(self, value: float) -> float:
+        return self.coefficient * value + self.zeroValue
 
 @dataclass
 class Line:
@@ -65,12 +70,59 @@ class Line:
     def length(self) -> float:
         return self.start.distanceTo(self.end)
 
-    # def intersects(self, other: Line) -> Vector2D | None:
-    #     if self.start.x - self.end.x < basicallyZero:
-    #         if self.start.x > other.start.x and self.end.x
-    #     if other.start.x - other.end.x < basicallyZero:
-    #         ...
+    def vector(self) -> Vector2D:
+        return self.end - self.start
 
+    def project(self, other: Line) -> tuple[float, float]:
+        """
+        Calculates the projection of the other line on the self's normal
+        The function returns two distances being the projections
+        The distances are relative to the projection line's vertex
+        """
+        projectionVector = self.vector()
+        projectionVector /= self.length()
+        projectionVector = Vector2D(projectionVector.y, -projectionVector.x)
+
+        startDistance = (other.start - self.start).dot(projectionVector)
+        endDistance = (other.end - self.start).dot(projectionVector)
+
+        return startDistance, endDistance
+
+    def intersects(self, other: Line) -> Vector2D | None:
+        (ds1, de1) = self.project(other)
+        (ds2, de2) = other.project(self)
+
+        # Here both lines are on the same axis
+        if  abs(ds1) < basicallyZero and\
+            abs(de1) < basicallyZero and\
+            abs(ds2) < basicallyZero and\
+            abs(de2) < basicallyZero:
+
+            ds1 = self.start.dot(other.start - self.start)
+            de1 = self.start.dot(other.end - self.start)
+            ds2 = self.end.dot(other.start - self.end)
+            de2 = self.end.dot(other.end - self.end)
+
+            print(ds1, de1, ds2, de2)
+            if ds1 * de1 > 0 and ds2 * de2 > 0:
+                return
+            if ds1 * de1 > 0:
+                return self.end
+            else: 
+                return self.start
+
+        # For either projection
+        # If the projection distances have different signs
+        # This means that there is an intersection in ths projection
+        # Both projections must intersect for a real intersection to be present
+        if ds1 * de1 > 0 or ds2 * de2 > 0:
+            return
+
+        correctionFactor = sin(self.vector().angle() - other.vector().angle())
+        print(correctionFactor)
+        if abs(correctionFactor) < basicallyZero:
+            return other.start
+        return self.start + self.vector() / self.length() * ds2 / correctionFactor
 @dataclass
 class Polygon:
     points: list[Vector2D]
@@ -133,8 +185,35 @@ def polygonize(lines: list[Line]) -> list[Polygon]:
 
     return polygons
 
+def sweepingLineIntersection(lines: list[Line]) -> list[Line]:
+    @dataclass
+    class SweepingLineIntersectionStruct:
+        line: Line
+        index: int
+        intersectWithIndex: list[int] = field(default_factory=lambda: [])
+        intersectionPoints: list[Vector2D] = field(default_factory=lambda: [])
+
+    sortedLines = [
+        SweepingLineIntersectionStruct(
+            Line(
+                line.start if line.start.x < line.end.x else line.end,
+                line.start if line.start.x > line.end.x else line.end
+            ), i)
+        for i, line in enumerate(lines)
+    ]
+    sortedLines.sort(key=lambda sl: min(sl.line.start.x, sl.line.end.x))
+
+    evaluationBucket:list [SweepingLineIntersectionStruct] = []
+    for sl in sortedLines:
+        elementsToRemove = [e for e in evaluationBucket if e.line.end.x - basicallyZero < sl.line.start.x]
+        for e in elementsToRemove: evaluationBucket.remove(e)
+
+        evaluationBucket.append(sl)
+
+    return []
+
 def inflatePolygon(polygon: Polygon, amount_mm: float) -> Polygon:
-    if not len(polygon.vertexNormals): raise Exception("Polygon's normals have not been calculated")
+    if not len(polygon.edgeNormals): raise Exception("Polygon's normals have not been calculated")
 
     # newPolygon = Polygon([
     #     point + vertexNormal * amount_mm / vertexNormal.dot(edgeNormal)
@@ -146,13 +225,17 @@ def inflatePolygon(polygon: Polygon, amount_mm: float) -> Polygon:
         for i in range(len(polygon.points))
     ]
 
+    newLines = []
     newPolygon = Polygon([])
     for i, line in enumerate(lines):
         newLine = Line(line.start, line.end)
         newLine.start += polygon.edgeNormals[i-1] * amount_mm
         newLine.end   += polygon.edgeNormals[i-1] * amount_mm
-
+    
+        newLines.append(newLine)
         newPolygon.points.append(newLine.start)
         newPolygon.points.append(newLine.end)
+
+    # sweepingLineIntersection(newLines)
 
     return newPolygon
