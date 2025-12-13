@@ -2,11 +2,12 @@ from typing import Sequence
 from matplotlib import colormaps
 import matplotlib.pyplot as plt
 
-from geometry import Geometry, Line, Polygon 
+from geometry import Geometry, Line, Polygon, Vector2D 
 
 plt.style.use("dark_background")
 fig, ax = plt.subplots()
 ax.axis("equal")
+ax.scatter(0, 0, marker="+", color="red")
 normalScaleFactor = 1/15
 
 def plotGeometries(geometries: Sequence[Geometry], color = None, format="-"):
@@ -18,13 +19,15 @@ def plotGeometries(geometries: Sequence[Geometry], color = None, format="-"):
                 format,
                 color = color
             )
-        if isinstance(g, Line):
+        elif isinstance(g, Line):
             ax.plot(
                 [g.start.x, g.end.x],
                 [g.start.y, g.end.y],
                 format,
                 color = color
             )
+        elif isinstance(g, Vector2D):
+            ax.scatter(g.x, g.y, color=color)
 
 def plotEdgeNormals(polygons: Sequence[Polygon], color = None):
     for p in polygons:

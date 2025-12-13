@@ -1,10 +1,11 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
 from math import cos, pi, sin, sqrt, atan
+from typing import Literal, Sequence
 
 
 basicallyZero = 0.000000001
-fusionTolerance = 0.05
+mergeTolerance = 0.05
 
 @dataclass
 class Vector2D:
@@ -38,8 +39,15 @@ class Vector2D:
     def __truediv__(self, other: float) -> Vector2D:
         return Vector2D(self.x / other, self.y / other)
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return hash(self.x.__hash__() + self.y.__hash__())
+
+    def offset(self, offset: Vector2D):
+        self += offset
+
+    def mirror(self, axis: Literal["x", "y"]):
+        if axis == "x": self.x *= -1
+        else: self.y *= -1
 
     def distanceTo(self, other: Vector2D) -> float:
         """Calculate euclidian distance"""
@@ -59,12 +67,15 @@ class Vector2D:
         return angle + pi if self.x < 0 else angle
 
 @dataclass
-class EquationAffine:
-    coefficient: float
-    zeroValue: float
+class Intersection:
+    point: Vector2D
+    between: tuple[int, int]
 
-    def evaluate(self, value: float) -> float:
-        return self.coefficient * value + self.zeroValue
+    def __post_init__(self):
+        if self.between[0] > self.between[1]:
+            self.between = (self.between[1], self.between[0])
+    def __hash__(self) -> int:
+        return hash(self.point.__hash__() + self.between.__hash__())
 
 @dataclass
 class Line:
@@ -76,6 +87,18 @@ class Line:
 
     def vector(self) -> Vector2D:
         return self.end - self.start
+
+    def offset(self, offset: Vector2D):
+        self.start += offset
+        self.end += offset
+
+    def mirror(self, axis: Literal["x", "y"]):
+        if axis == "x":
+            self.start.x *= -1
+            self.end.x *= -1
+        else:
+            self.start.y *= -1
+            self.end.y *= -1
 
     def projectToNormal(self, other: Line) -> tuple[float, float]:
         """
@@ -132,6 +155,18 @@ class Polygon:
     edgeNormals: list[Vector2D] = field(default_factory=lambda: [])
     vertexNormals: list[Vector2D] = field(default_factory=lambda: []) 
 
+    def offset(self, offset: Vector2D):
+        for i in range(len(self.points)):
+            self.points[i] += offset
+
+    def mirror(self, axis: Literal["x", "y"]):
+        if axis == "x":
+            for p in self.points:
+                p.x *= -1
+        else:
+            for p in self.points:
+                p.y *= -1
+
     def calculate_normals(self):
         if not len(self.edgeNormals): self.edgeNormals = [Vector2D(0,0) for _ in self.points]
         if not len(self.vertexNormals): self.vertexNormals = [Vector2D(0,0) for _ in self.points]
@@ -155,13 +190,20 @@ class Polygon:
                 n *= -1
             self.vertexNormals[i-1] = n
 
-    def oversample(self):
-        newPoints = [
-            (self.points[i-1] + self.points[i]) / 2
-            for i in range(len(self.points))
-        ]
+    def perimeter(self) -> float:
+        perimeter = 0
+        for i in range(len(self.points)):
+            perimeter += self.points[i-1].distanceTo(self.points[i])
+        return perimeter
 
-        self.points = [val for pair in zip(newPoints, self.points) for val in pair]
+    def removeSmallSegments(self) -> Polygon:
+        newPolygon = Polygon([])
+
+        for i in range(len(self.points)):
+            if self.points[i-1].distanceTo(self.points[i]) > mergeTolerance:
+                newPolygon.points.append(self.points[i])
+
+        return newPolygon
 
     def breakAppart(self) -> list[Line]:
         return [
@@ -169,72 +211,125 @@ class Polygon:
             for i in range(len(self.points))
         ]
 
-    def inflate(self, amount_mm: float) -> Polygon:
+    def inflate(self, amount: float, attempts: int = 3) -> Polygon:
         self.calculate_normals()
         lines = self.breakAppart()
+        oldPerimeter = self.perimeter()
 
         newLines = [
             Line(
-                line.start + self.edgeNormals[i-1] * amount_mm,
-                line.end   + self.edgeNormals[i-1] * amount_mm,
+                line.start + self.edgeNormals[i-1] * amount,
+                line.end   + self.edgeNormals[i-1] * amount,
             ) for i, line in enumerate(lines)
         ]
 
-        tempPolygon = Polygon([p for line in newLines for p in [line.start, line.end]]) 
-
         index = 0
-        while index < len(tempPolygon.points):
-            p1 = tempPolygon.points[index-1]
-            p2 = tempPolygon.points[index] 
-            if p1.distanceTo(p2) < fusionTolerance:
-                tempPolygon.points[index - 1] = (p1 + p2) / 2
-                tempPolygon.points.pop(index)
+        while index < len(newLines):
+            p1 = newLines[index - 1].end
+            p2 = newLines[index].start
+            if p1.distanceTo(p2) < mergeTolerance:
+                mid = (p1 + p2) / 2
+                newLines[index - 1].end = mid
+                newLines[index].start = mid
+            else:
+                newLines.insert(index, Line(p1, p2))
             index += 1
 
-        newLines = tempPolygon.breakAppart()
+        intersections = list(sweepingLineIntersection(newLines))
+        intersections.sort(key=lambda i: i.between[1], reverse=True)
+        intersections.sort(key=lambda i: i.between[0])
 
-        import graphics
-        graphics.plotLinesRainbow(newLines)
+        # import graphics
+        # graphics.plotLinesRainbow(newLines)
 
-        newLines = sweepingLineIntersection(newLines)
+        minimumIndex = 0
+        severedLines = []
+        for i in intersections:
+            # graphics.ax.scatter(i.point.x, i.point.y, color="yellow")
 
-        return Polygon([line.start for line in newLines]) 
+            if i.between[0] < minimumIndex: continue
+
+            newLines[i.between[0]].end = i.point
+            newLines[i.between[1]].start = i.point
+            minimumIndex = i.between[1]
+            severedLines += newLines[i.between[0] + 1 : i.between[1]]
+
+        for severee in severedLines:
+            newLines.remove(severee)
+
+        newPolygon = Polygon([line.start for line in newLines]).removeSmallSegments()
+
+        # If the new inflated polygon is far smaller than the previous one
+        # because most of it was culled and only "inside an interception" was kept
+        # try again but with the starting point shifted a little
+        if attempts and newPolygon.perimeter() < oldPerimeter * 0.7:
+            self.points = self.points[2:] + self.points[:2]
+            return self.inflate(amount, attempts-1)
+
+        return newPolygon
 
 @dataclass
 class Circle:
     center: Vector2D
     radius: float
 
+    def offset(self, offset: Vector2D):
+        self.center += offset
+
+    def mirror(self, axis: Literal["x", "y"]):
+        if axis == "x": self.center.x *= -1
+        else: self.center.y *= -1
+
+    def inflate(self, amount: float, _: int = 3) -> Circle:
+        return Circle(self.center, self.radius + amount)
+
+@dataclass
+class GeometrySettigs:
+    inflate: float | None
+    mirror_x: bool
+    mirror_y: bool
+    offset_x: float | None
+    offset_y: float | None
+    tolerance: float
+
+Geometry = Circle | Polygon | Line | Vector2D
+InflatableGeometry = Circle | Polygon
 
 
-Geometry = Circle | Polygon | Line
+def transformGeometries(geometries: Sequence[Geometry], settings: GeometrySettigs) -> Sequence[Geometry]: 
+    newGeometries = [g for g in geometries]
 
+    if settings.inflate is not None:
+        newGeometries = [
+            g.inflate(settings.inflate)
+            for g in newGeometries if isinstance(g, InflatableGeometry)
+        ] + [
+            g for g in newGeometries if not isinstance(g, InflatableGeometry)
+        ]
 
+    if settings.mirror_x:
+        for g in newGeometries:
+            g.mirror("x")
 
-def polygonize(lines: list[Line]) -> list[Polygon]:
-    polygons = [Polygon([lines[0].start])]
-    previousLine = lines[0]
+    if settings.mirror_y:
+        for g in newGeometries:
+            g.mirror("y")
 
-    for line in lines[1:]:
-        if line.start.distanceTo(previousLine.end) < fusionTolerance:
-            polygons[-1].points.append(line.start)
-        else:
-            polygons.append(Polygon([line.start]))
-        previousLine = line
+    if settings.offset_x or settings.offset_y:
+        for g in newGeometries:
+            offset = Vector2D(
+                settings.offset_x or 0,
+                settings.offset_y or 0
+            )
+            g.offset(offset)
 
-    return polygons
+    return newGeometries
 
-def sweepingLineIntersection(lines: list[Line]) -> list[Line]:
-    @dataclass
-    class Intersection:
-        point: Vector2D
-        withIndex: int
-
+def sweepingLineIntersection(lines: Sequence[Line]) -> set[Intersection]:
     @dataclass
     class SweepingLineIntersectionStruct:
         line: Line
         index: int
-        intersections: dict[int, Intersection] = field(default_factory=lambda: {})
 
     sortedLines: list[SweepingLineIntersectionStruct] = []
     for i, line in enumerate(lines):
@@ -244,9 +339,10 @@ def sweepingLineIntersection(lines: list[Line]) -> list[Line]:
             sortedLines.append(SweepingLineIntersectionStruct(Line(line.end, line.start), i))
     sortedLines.sort(key=lambda sl: sl.line.start.x)
 
+    intersections: set[Intersection] = set()
     evaluationBucket:list [SweepingLineIntersectionStruct] = []
     for sl in sortedLines:
-        elementsToRemove = [e for e in evaluationBucket if e.line.end.x - basicallyZero < sl.line.start.x]
+        elementsToRemove = [e for e in evaluationBucket if e.line.end.x + mergeTolerance < sl.line.start.x]
         for e in elementsToRemove: evaluationBucket.remove(e)
 
         evaluationBucket.append(sl)
@@ -257,35 +353,9 @@ def sweepingLineIntersection(lines: list[Line]) -> list[Line]:
                 if intersection is None: continue
                 if intersection.distanceTo(evaluee1.line.start) < basicallyZero: continue
                 if intersection.distanceTo(evaluee1.line.end) < basicallyZero: continue
-                # graphics.ax.scatter(intersection.x, intersection.y, color="white")
-                evaluee1.intersections[evaluee2.index] = Intersection(intersection, evaluee2.index)
-                evaluee2.intersections[evaluee1.index] = Intersection(intersection, evaluee1.index)
+                if intersection.distanceTo(evaluee2.line.start) < basicallyZero: continue
+                if intersection.distanceTo(evaluee2.line.end) < basicallyZero: continue
+                intersections.add(Intersection(intersection, (evaluee1.index, evaluee2.index)))
 
-    newLines: list[Line] = []
-    sortedLines.sort(key=lambda sl: sl.index)
-    index = 0
-    while index < len(sortedLines):
-        newLines.append(lines[index])
-
-        if sortedLines[index].intersections:
-            selectedIntersection = None
-            for intersection in sortedLines[index].intersections.values():
-                if sortedLines[intersection.withIndex].intersections.get(index):
-                    selectedIntersection = intersection
-                    break
-
-            if selectedIntersection is None:
-                import graphics
-                graphics.show()
-                raise Exception("no valid interception")
-
-            newLines[-1].end = selectedIntersection.point 
-            lines[selectedIntersection.withIndex].start = selectedIntersection.point
-            sortedLines[selectedIntersection.withIndex].intersections.pop(index)
-            index = selectedIntersection.withIndex
-        else:
-            index += 1
-
-    return newLines
-
+    return intersections
 
