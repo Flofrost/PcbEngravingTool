@@ -1,7 +1,7 @@
 import argparse, os
 from gcode import GCodeSettings, generateGCode
-from geometry import GeometrySettigs, InflatableGeometry, Vector2D, transformGeometries
-from readers import extractGeometryDxf
+from geometry import GeometrySettigs, transformGeometries
+from readers import extractors
 
 parser = argparse.ArgumentParser(
     prog="PCB Engraving Tool",
@@ -9,14 +9,14 @@ parser = argparse.ArgumentParser(
 )
 
 parser.add_argument(
-    "filename",
-    type=str,
+    "inputfile",
+    type=argparse.FileType("r"),
     help="Input file to process, can be DXF or DRL file"
 )
 parser.add_argument(
     "-o", "--output",
     type=str,
-    help="Name of output file, defaults to filename.gcode"
+    help="Name of output file, defaults to inputfile.gcode"
 )
 parser.add_argument(
     "-c", "--config",
@@ -106,24 +106,17 @@ parser_graphics.add_argument(
     action="store_true",
     help="Displays the processed geometries"
 )
+parser_graphics.add_argument(
+    "--plot-all",
+    action="store_true",
+    help="Equivalent to --plot-original --plot-result"
+)
 
 
 args = parser.parse_args()
 
-if not os.path.isfile(args.filename):
-    print(f"File {args.filename} not found")
-    exit(1)
-
-basename, extention = os.path.splitext(args.filename)
-basename = str(basename)
-extention = str(extention).lower()[1:]
-if not extention in ["dxf", "drl"]:
-    print(f"File type (extention) must be DXF or DRL")
-    exit(2)
-
-if not args.output:
-    args.output = basename + ".gcode"
-
+filename = args.inputfile.name
+extention = str(os.path.splitext(filename)[1]).lower()
 
 geometrySettings = GeometrySettigs(
     tolerance=args.tolerance,
@@ -143,24 +136,30 @@ gcodeSettings = GCodeSettings(
     spindle=args.spindle
 )
 
+if not args.output:
+    args.output = str(os.path.splitext(args.inputfile.name)[0]) + ".gcode"
 
-if extention == "dxf":
-    geometries = extractGeometryDxf(args.filename, args.tolerance)
+if extractor := extractors.get(str(os.path.splitext(args.inputfile.name)[1])[1:].lower()):
+    outputFiles = extractor(args.inputfile, args.output, args.tolerance)
 else:
-    geometries = []
+    print(f"File type (extention) must be DXF or DRL")
+    exit(1)
 
-newGeometries = transformGeometries(geometries, geometrySettings)
+for file in outputFiles:
+    file.transformedGeometries = transformGeometries(file.originalGeometries, geometrySettings)
+    gcode = generateGCode(file.transformedGeometries, gcodeSettings)
 
-print(generateGCode(newGeometries, gcodeSettings))
+    with open(file.outputPath, "w") as f:
+        f.write(gcode)
 
-if args.plot_original or args.plot_result:
+if args.plot_original or args.plot_result or args.plot_all:
     import graphics
 
-    if args.plot_original:
-        graphics.plotGeometries(geometries, color="blue")
+    if args.plot_original or args.plot_all:
+        graphics.plotGeometries([g for f in outputFiles for g in f.originalGeometries], color="blue")
 
-    if args.plot_result:
-        graphics.plotGeometries(newGeometries, color="green")
+    if args.plot_result or args.plot_all:
+        graphics.plotGeometries([g for f in outputFiles for g in f.transformedGeometries], color="green")
 
     graphics.show()
 

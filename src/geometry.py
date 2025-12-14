@@ -269,21 +269,6 @@ class Polygon:
         return newPolygon
 
 @dataclass
-class Circle:
-    center: Vector2D
-    radius: float
-
-    def offset(self, offset: Vector2D):
-        self.center += offset
-
-    def mirror(self, axis: Literal["x", "y"]):
-        if axis == "x": self.center.x *= -1
-        else: self.center.y *= -1
-
-    def inflate(self, amount: float, _: int = 3) -> Circle:
-        return Circle(self.center, self.radius + amount)
-
-@dataclass
 class GeometrySettigs:
     inflate: float | None
     mirror_x: bool
@@ -292,8 +277,7 @@ class GeometrySettigs:
     offset_y: float | None
     tolerance: float
 
-Geometry = Circle | Polygon | Line | Vector2D
-InflatableGeometry = Circle | Polygon
+Geometry =  Polygon | Line | Vector2D
 
 
 def transformGeometries(geometries: Sequence[Geometry], settings: GeometrySettigs) -> Sequence[Geometry]: 
@@ -302,9 +286,9 @@ def transformGeometries(geometries: Sequence[Geometry], settings: GeometrySettig
     if settings.inflate is not None:
         newGeometries = [
             g.inflate(settings.inflate)
-            for g in newGeometries if isinstance(g, InflatableGeometry)
+            for g in newGeometries if isinstance(g, Polygon)
         ] + [
-            g for g in newGeometries if not isinstance(g, InflatableGeometry)
+            g for g in newGeometries if not isinstance(g, Polygon)
         ]
 
     if settings.mirror_x:

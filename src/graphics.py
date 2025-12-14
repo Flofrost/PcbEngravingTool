@@ -27,7 +27,7 @@ def plotGeometries(geometries: Sequence[Geometry], color = None, format="-"):
                 color = color
             )
         elif isinstance(g, Vector2D):
-            ax.scatter(g.x, g.y, color=color)
+            ax.scatter(g.x, g.y, color=color, marker="x")
 
 def plotEdgeNormals(polygons: Sequence[Polygon], color = None):
     for p in polygons:

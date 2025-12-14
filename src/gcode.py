@@ -53,7 +53,7 @@ def generateGCode(geometries: Sequence[Geometry], settings: GCodeSettings):
                 ""
             ]
 
-    gcode.append("M5")
+    gcode.append("M5\n")
 
     return "\n".join(gcode)
 
