@@ -48,7 +48,7 @@ polygons = [
 ]
 for p in polygons: p.calculate_normals()
 
-boundsBottomLeft, boundsTopRight = getBounds(polygons, 0.5)
+boundsBottomLeft, boundsTopRight = getBounds(polygons, 20)
 boundingBox = Polygon([
     boundsTopRight,
     Vector2D(boundsTopRight.x, boundsBottomLeft.y),
@@ -132,22 +132,43 @@ def rasterVoronoiBounds(polygons: list[Polygon], bounds: tuple[Vector2D, Vector2
                 graphics.plotGeometries([voronoiEdgePoint], color="red")
             previousIntersection = intersection
 
+def createPorcupine(polygon: Polygon, length: float) -> list[Line]:
+    quills: list[Line] = []
+
+    for i in range(len(polygon.points)):
+        # midPoint = (polygon.points[i-1] + polygon.points[i]) / 2
+        # edgeLine = Line(
+        #     midPoint,
+        #     midPoint + polygon.edgeNormals[i-1] * length
+        # )
+        # quills.append(edgeLine)
+        quills.append(Line(polygon.points[i], polygon.points[i] + polygon.vertexNormals[i] * length))
+
+    return quills
 
 
 
+porcupines = [createPorcupine(p, 100) for p in polygons]
+testpolys = [Polygon([l.start for l in lines]) for lines in porcupines]
+for p in testpolys:
+    p.calculate_normals()
+    for i in range(len(p.points)):
+        p.points[i] += p.vertexNormals[i] * 30 / p.vertexNormals[i].dot(p.edgeNormals[i])
 
 
 
 
 
 graphics.plt.ion()
-graphics.plotGeometries([boundingBox], color="gray", format="--")
+# graphics.plotGeometries([boundingBox], color="gray", format="--")
 # rasterVoronoiBounds(
 #     polygons,
 #     (boundsBottomLeft, boundsTopRight),
 #     (boundsTopRight.x - boundsBottomLeft.x) / 20
 # )
 graphics.plotGeometries(polygons, color="white")
-graphics.normalScaleFactor = 20
-graphics.plotVertexNormals(polygons, color="pink")
+graphics.plotGeometries(testpolys, color="blue")
+graphics.plotGeometries([l for p in porcupines for l in p], color="purple")
+# graphics.normalScaleFactor = 200
+# graphics.plotVertexNormals(polygons, color="pink")
 graphics.show()
