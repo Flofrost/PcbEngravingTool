@@ -67,17 +67,6 @@ class Vector2D:
         return angle + pi if self.x < 0 else angle
 
 @dataclass
-class Intersection:
-    point: Vector2D
-    between: tuple[int, int]
-
-    def __post_init__(self):
-        if self.between[0] > self.between[1]:
-            self.between = (self.between[1], self.between[0])
-    def __hash__(self) -> int:
-        return hash(self.point.__hash__() + self.between.__hash__())
-
-@dataclass
 class Line:
     start: Vector2D
     end: Vector2D
@@ -154,6 +143,7 @@ class Polygon:
     points: list[Vector2D]
     edgeNormals: list[Vector2D] = field(default_factory=lambda: [])
     vertexNormals: list[Vector2D] = field(default_factory=lambda: []) 
+    bounds: Polygon | None = None
 
     def offset(self, offset: Vector2D):
         for i in range(len(self.points)):
@@ -268,6 +258,24 @@ class Polygon:
 
         return newPolygon
 
+Geometry =  Polygon | Line | Vector2D
+
+@dataclass
+class Intersection:
+    point: Vector2D
+    between: tuple[int, int]
+
+    def __post_init__(self):
+        if self.between[0] > self.between[1]:
+            self.between = (self.between[1], self.between[0])
+    def __hash__(self) -> int:
+        return hash(self.point.__hash__() + self.between.__hash__())
+
+@dataclass
+class LineWithOriginIndex:
+    line: Line
+    index: int
+
 @dataclass
 class GeometrySettigs:
     inflate: float | None
@@ -277,7 +285,6 @@ class GeometrySettigs:
     offset_y: float | None
     tolerance: float
 
-Geometry =  Polygon | Line | Vector2D
 
 
 def transformGeometries(geometries: Sequence[Geometry], settings: GeometrySettigs) -> Sequence[Geometry]: 
@@ -310,21 +317,16 @@ def transformGeometries(geometries: Sequence[Geometry], settings: GeometrySettig
     return newGeometries
 
 def sweepingLineIntersection(lines: Sequence[Line]) -> set[Intersection]:
-    @dataclass
-    class SweepingLineIntersectionStruct:
-        line: Line
-        index: int
-
-    sortedLines: list[SweepingLineIntersectionStruct] = []
-    for i, line in enumerate(lines):
-        if line.start.x < line.end.x:
-            sortedLines.append(SweepingLineIntersectionStruct(Line(line.start, line.end), i))
-        else:
-            sortedLines.append(SweepingLineIntersectionStruct(Line(line.end, line.start), i))
+    sortedLines: list[LineWithOriginIndex] = [
+        LineWithOriginIndex(Line(line.start, line.end), i)
+        if line.start.x < line.end.x else
+        LineWithOriginIndex(Line(line.end, line.start), i)
+        for i, line in enumerate(lines)
+    ]
     sortedLines.sort(key=lambda sl: sl.line.start.x)
 
     intersections: set[Intersection] = set()
-    evaluationBucket:list [SweepingLineIntersectionStruct] = []
+    evaluationBucket:list [LineWithOriginIndex] = []
     for sl in sortedLines:
         elementsToRemove = [e for e in evaluationBucket if e.line.end.x + mergeTolerance < sl.line.start.x]
         for e in elementsToRemove: evaluationBucket.remove(e)
@@ -342,4 +344,27 @@ def sweepingLineIntersection(lines: Sequence[Line]) -> set[Intersection]:
                 intersections.add(Intersection(intersection, (evaluee1.index, evaluee2.index)))
 
     return intersections
+
+
+def getBounds(geometries: Sequence[Geometry], padding: float = 0) -> tuple[Vector2D, Vector2D]:
+    minimum = Vector2D(float("inf"), float("inf"))
+    maximum = Vector2D(float("-inf"), float("-inf")) 
+
+    def testPoint(p: Vector2D):
+        if p.x < minimum.x: minimum.x = p.x
+        if p.y < minimum.y: minimum.y = p.y
+        if p.x > maximum.x: maximum.x = p.x
+        if p.y > maximum.y: maximum.y = p.y
+
+    for g in geometries:
+        if isinstance(g, Vector2D):
+            testPoint(g)
+        elif isinstance(g, Line):
+            testPoint(g.start)
+            testPoint(g.end)
+        else:
+            for p in g.points:
+                testPoint(p)
+
+    return  minimum + Vector2D(-padding, -padding), maximum + Vector2D(padding, padding)
 
