@@ -67,6 +67,14 @@ class Vector2D:
         return angle + pi if self.x < 0 else angle
 
 @dataclass
+class Vector2DWithIndex:
+    point: Vector2D
+    index: int
+
+    def __hash__(self) -> int:
+        return hash(self.point.__hash__() + self.index.__hash__())
+
+@dataclass
 class Line:
     start: Vector2D
     end: Vector2D
@@ -88,6 +96,11 @@ class Line:
         else:
             self.start.y *= -1
             self.end.y *= -1
+
+    def pointOnLine(self, point: Vector2D) -> bool:
+        projectionVector = self.vector()
+        projectionVector = Vector2D(projectionVector.y, -projectionVector.x)
+        return abs((point - self.start).dot(projectionVector)) < basicallyZero * 2
 
     def projectToNormal(self, other: Line) -> tuple[float, float]:
         """
@@ -136,7 +149,17 @@ class Line:
         correctionFactor = sin(self.vector().angle() - other.vector().angle())
         # if abs(correctionFactor) < basicallyZero:
         #     return other.start
-        return self.start + self.vector() / self.length() * ds2 / correctionFactor
+        intersectionPoint = self.start + self.vector() / self.length() * ds2 / correctionFactor
+        if intersectionPoint.distanceTo(self.start) < basicallyZero or intersectionPoint.distanceTo(self.end) < basicallyZero:
+            return
+        return intersectionPoint
+
+    def trim(self, trimPoint: Vector2D, compareAgainst: list[Line], referencePoint: Vector2D):
+        intersections = [i for l in compareAgainst if (i := Line(referencePoint, self.start).intersects(l))]
+        if intersections:
+            self.start = trimPoint
+        else:
+            self.end = trimPoint
 
 @dataclass
 class Polygon:
@@ -171,14 +194,17 @@ class Polygon:
 
         # Calculating Vertex Normals
         for i in range(len(self.points)):
-            p1, p2, p3 = self.points[i-2], self.points[i-1], self.points[i]
-            v1 = p3 - p2
-            v2 = p1 - p2
-            a = (v1.angle() + v2.angle()) / 2
+            # p1, p2, p3 = self.points[i-2], self.points[i-1], self.points[i]
+            # v1 = p3 - p2
+            # v2 = p1 - p2
+            # a = (v1.angle() + v2.angle()) / 2
+            # n = Vector2D(cos(a), sin(a))
+            e1, e2 = self.edgeNormals[i-1], self.edgeNormals[i]
+            a = (e1.angle() + e2.angle()) / 2
             n = Vector2D(cos(a), sin(a))
             if n.dot(self.edgeNormals[i-1]) < 0:
                 n *= -1
-            self.vertexNormals[i-1] = n
+            self.vertexNormals[i] = n
 
     def perimeter(self) -> float:
         perimeter = 0
@@ -213,6 +239,16 @@ class Polygon:
             ) for i, line in enumerate(lines)
         ]
 
+        for i in range(len(newLines)):
+            lineVect = newLines[i].end - newLines[i].start
+            lineVect /= lineVect.modulus()
+
+            if (d := self.vertexNormals[i-1].dot(lineVect)) < 0:
+                newLines[i].start += lineVect * d * amount
+
+            if (d := self.vertexNormals[i].dot(lineVect)) > 0:
+                newLines[i].end += lineVect * d * amount
+
         index = 0
         while index < len(newLines):
             p1 = newLines[index - 1].end
@@ -225,12 +261,14 @@ class Polygon:
                 newLines.insert(index, Line(p1, p2))
             index += 1
 
+        # import graphics
+        # graphics.plotLinesRainbow(newLines)
+
         intersections = list(sweepingLineIntersection(newLines))
+        # Sorting such that intersectionsbetween the closest and furthest vertext come earlier
         intersections.sort(key=lambda i: i.between[1], reverse=True)
         intersections.sort(key=lambda i: i.between[0])
 
-        # import graphics
-        # graphics.plotLinesRainbow(newLines)
 
         minimumIndex = 0
         severedLines = []
@@ -272,7 +310,7 @@ class Intersection:
         return hash(self.point.__hash__() + self.between.__hash__())
 
 @dataclass
-class LineWithOriginIndex:
+class LineWithIndex:
     line: Line
     index: int
 
@@ -317,18 +355,22 @@ def transformGeometries(geometries: Sequence[Geometry], settings: GeometrySettig
     return newGeometries
 
 def sweepingLineIntersection(lines: Sequence[Line]) -> set[Intersection]:
-    sortedLines: list[LineWithOriginIndex] = [
-        LineWithOriginIndex(Line(line.start, line.end), i)
+    sortedLines: list[LineWithIndex] = [
+        LineWithIndex(Line(line.start, line.end), i)
         if line.start.x < line.end.x else
-        LineWithOriginIndex(Line(line.end, line.start), i)
+        LineWithIndex(Line(line.end, line.start), i)
         for i, line in enumerate(lines)
     ]
     sortedLines.sort(key=lambda sl: sl.line.start.x)
 
     intersections: set[Intersection] = set()
-    evaluationBucket:list [LineWithOriginIndex] = []
+    evaluationBucket: list[LineWithIndex] = []
     for sl in sortedLines:
-        elementsToRemove = [e for e in evaluationBucket if e.line.end.x + mergeTolerance < sl.line.start.x]
+        elementsToRemove = [
+            e
+            for e in evaluationBucket
+            if e.line.end.x + mergeTolerance < sl.line.start.x
+        ]
         for e in elementsToRemove: evaluationBucket.remove(e)
 
         evaluationBucket.append(sl)
