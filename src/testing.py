@@ -1,6 +1,5 @@
 from dataclasses import dataclass
-from typing import Callable
-from geometry import Intersection, Line, LineWithIndex, Polygon, Vector2D, Vector2DWithIndex, getBounds, sweepingLineIntersection
+from geometry import  Line,  Polygon, Vector2D, Vector2DWithIndex, getBounds, sweepingLineIntersection
 from readers import extractGeometryDXF
 import graphics
 
@@ -49,6 +48,7 @@ polygons = [
 ]
 # with open("./testschema/test-F_Cu.dxf") as f:
 #     polygons = [p for p in extractGeometryDXF(f, "ya")[0].originalGeometries if isinstance(p, Polygon)]
+# polygons = [polygons[0]]
 for p in polygons: p.calculate_normals()
 
 boundsBottomLeft, boundsTopRight = getBounds(polygons, 20)
@@ -91,7 +91,7 @@ def voronoi(points: list[Vector2D], bounds: Polygon, maxLength: float) -> list[L
     # graphics.clear()
     # graphics.plotGeometries(sites, color="white")
     # graphics.plotGeometries([e.line for e in edges], color="red")
-    # graphics.plt.waitforbuttonpress()
+    # graphics.pause()
 
     for i, p in enumerate(points):
         if i < 2: continue
@@ -127,7 +127,7 @@ def voronoi(points: list[Vector2D], bounds: Polygon, maxLength: float) -> list[L
             # graphics.plotGeometries([newEdge], color="orange")
             # graphics.plotGeometries([e.line for e in otherPointEdges], color="green")
             # graphics.plotGeometries(list(verticies), color="lime")
-            # graphics.plt.waitforbuttonpress()
+            # graphics.pause()
 
             if not intersections:
                 if not unexploredSites: break
@@ -167,14 +167,6 @@ def voronoi(points: list[Vector2D], bounds: Polygon, maxLength: float) -> list[L
 
             for b in [ b for inter in intersections if inter.index >= 0 for b in edges[inter.index].bisects ]:
                 intersectedSites.add(b)
-            unexploredSites = intersectedSites - exploredSites
-
-            # graphics.clear()
-            # graphics.plotGeometries(sites, color="white")
-            # graphics.plotGeometries([e.line for e in edges], color="red")
-            # graphics.plotGeometries([newEdge], color="orange")
-            # graphics.plotGeometries([e.line for e in otherPointEdges], color="green")
-            # graphics.plt.waitforbuttonpress()
 
             newEdgeMid = (newEdge.end + newEdge.start) / 2
             projectionVector = newEdge.vector()
@@ -187,10 +179,19 @@ def voronoi(points: list[Vector2D], bounds: Polygon, maxLength: float) -> list[L
                 if  projectionVector.dot(e.line.start - newEdgeMid) < 0 and\
                     projectionVector.dot(e.line.end - newEdgeMid) < 0:
                     edges.remove(e)
+                    intersectedSites.add(e.bisects[0])
+                    intersectedSites.add(e.bisects[1])
 
+            # graphics.clear()
+            # graphics.plotGeometries(sites, color="white")
+            # graphics.plotGeometries([e.line for e in edges], color="red")
+            # graphics.plotGeometries([newEdge], color="orange")
+            # graphics.plotGeometries([e.line for e in otherPointEdges], color="green")
+            # graphics.pause()
+
+            unexploredSites = intersectedSites - exploredSites
             if not unexploredSites: break
             otherPoint = unexploredSites.pop()
-
 
     boundsCenter = sum(bounds.points) / len(bounds.points)
     if not isinstance(boundsCenter, Vector2D):
@@ -213,6 +214,7 @@ def voronoi(points: list[Vector2D], bounds: Polygon, maxLength: float) -> list[L
 
 
 graphics.plt.ion()
+graphics.plt.show()
 pointsBucket = [p for pl in polygons for p in pl.points]
 voronoiEdges = voronoi(pointsBucket, boundingBox, boundLength * 2)
 graphics.clear()
