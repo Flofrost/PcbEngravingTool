@@ -61,98 +61,6 @@ boundingBox = Polygon([
 boundLength = boundsBottomLeft.distanceTo(boundsTopRight)
 
 
-def rasterPolygonsAlongAxis(
-    polygons: list[Polygon],
-    bounds: tuple[Vector2D, Vector2D],
-    axis: Callable[[Vector2D], float],
-    step: float
-) -> list[list[Vector2DWithIndex]]:
-
-    linesBucket = [
-        LineWithIndex(l, i)
-        if axis(l.start) < axis(l.end) else
-        LineWithIndex(Line(l.end, l.start), i)
-        for i, p in enumerate(polygons)
-        for l in p.breakAppart()
-    ]
-    linesBucket.sort(key = lambda l: axis(l.line.start))
-
-    allIntersections: list[list[Vector2DWithIndex]] = []
-    compareBucket: list[LineWithIndex] = []
-    sweepingLineIndex = 0
-    judgmentIndex = axis(bounds[0])
-    while judgmentIndex < axis(bounds[1]):
-        while sweepingLineIndex < len(linesBucket) and axis((l := linesBucket[sweepingLineIndex]).line.start) < judgmentIndex:
-            compareBucket.append(l)
-            sweepingLineIndex += 1
-
-        if axis(Vector2D(0, 1)):
-            judgmentLine = Line(
-                Vector2D(bounds[0].x, judgmentIndex),
-                Vector2D(bounds[1].x, judgmentIndex)
-            )
-        else:
-            judgmentLine = Line(
-                Vector2D(judgmentIndex, bounds[0].y),
-                Vector2D(judgmentIndex, bounds[1].y)
-            )
-
-        thisjudgmentIntersections: list[Vector2DWithIndex] = [
-            Vector2DWithIndex(intersection, l.index) 
-            for l in compareBucket
-            if (intersection := judgmentLine.intersects(l.line))
-        ]
-        thisjudgmentIntersections.sort(key = lambda v: v.point.x if axis(v.point) is v.point.y else v.point.y)
-
-
-        graphics.plotGeometries([i.point for i in thisjudgmentIntersections], color="yellow")
-        # graphics.plotGeometries([l.line for l in compareBucket], color="white")
-        # graphics.plotGeometries([judgmentLine], color="#555522")
-        # graphics.plt.pause(0.05)
-
-        allIntersections.append(thisjudgmentIntersections)
-        judgmentIndex += step
-
-        linesToRemove = [l for l in compareBucket if axis(l.line.end) < judgmentIndex]
-        for l in linesToRemove: compareBucket.remove(l)
-
-    return allIntersections
-
-def rasterVoronoiBounds(polygons: list[Polygon], bounds: tuple[Vector2D, Vector2D], step: float = 0.05):
-    fullRaster = rasterPolygonsAlongAxis(polygons, bounds, lambda p: p.x, step) +\
-        rasterPolygonsAlongAxis(polygons, bounds, lambda p: p.y, step)
-
-    for rasterLine in fullRaster:
-        if len(rasterLine) < 2: continue
-
-        previousIntersection = rasterLine[0]
-        for intersection in rasterLine[1:]:
-            if intersection.index != previousIntersection.index:
-                voronoiEdgePoint = (intersection.point + previousIntersection.point) / 2
-                graphics.plotGeometries([voronoiEdgePoint], color="red")
-            previousIntersection = intersection
-
-def lerp(p1: Vector2D, p2: Vector2D, t: float) -> Vector2D:
-    return p1 * t + p2 * (1-t)
-
-def createPorcupine(polygon: Polygon, length: float) -> list[LineWithIndex]:
-    polygon.calculate_normals()
-    quills: list[LineWithIndex] = []
-
-    for i in range(len(polygon.points)):
-        currentEdge = Line(polygon.points[i-1], polygon.points[i])
-        distance = 0
-
-        while distance < currentEdge.length():
-            startPoint = lerp(currentEdge.start, currentEdge.end, distance/currentEdge.length())
-            distance += 0.05
-            quills.append(LineWithIndex(
-                Line(startPoint, startPoint - polygon.edgeNormals[i-1] * length),
-                i
-            ))
-
-    return quills
-
 def createBisector(p1: Vector2D, p2: Vector2D, length: float) -> Line:
     midPoint = (p1 + p2) / 2
     vector = p2 - p1
@@ -179,12 +87,11 @@ def voronoi(points: list[Vector2D], bounds: Polygon, maxLength: float) -> list[L
     )]
 
     sites: list[Vector2D] = points[:2]
-    # verticies: set[Vector2D] = set()
 
-    graphics.clear()
-    graphics.plotGeometries(sites, color="white")
-    graphics.plotGeometries([e.line for e in edges], color="red")
-    graphics.plt.waitforbuttonpress()
+    # graphics.clear()
+    # graphics.plotGeometries(sites, color="white")
+    # graphics.plotGeometries([e.line for e in edges], color="red")
+    # graphics.plt.waitforbuttonpress()
 
     for i, p in enumerate(points):
         if i < 2: continue
@@ -210,9 +117,9 @@ def voronoi(points: list[Vector2D], bounds: Polygon, maxLength: float) -> list[L
                 for v in verticies
                 if newEdge.pointOnLine(v)
             ]
-            print()
-            print(intersections)
-
+            # print()
+            # print(intersections)
+            #
             # graphics.clear()
             # graphics.plotGeometries(sites, color="white")
             # graphics.plotGeometries([e.line for e in edges], color="red")
@@ -255,18 +162,6 @@ def voronoi(points: list[Vector2D], bounds: Polygon, maxLength: float) -> list[L
                         points[otherPoint] 
                     )
 
-                newEdgeMid = (newEdge.end + newEdge.start) / 2
-                projectionVector = newEdge.vector()
-                projectionVector /= projectionVector.modulus()
-                projectionVector = Vector2D(-projectionVector.y, projectionVector.x)
-                if projectionVector.dot(p - newEdgeMid) > 0:
-                    projectionVector *= -1
-
-                for e in otherPointEdges:
-                    if  projectionVector.dot(e.line.start - newEdgeMid) < 0 and\
-                        projectionVector.dot(e.line.end - newEdgeMid) < 0:
-                        edges.remove(e)
-
             edges.append(VoronoiEdge(newEdge, (i, otherPoint)))
             exploredSites.add(otherPoint)
 
@@ -277,15 +172,40 @@ def voronoi(points: list[Vector2D], bounds: Polygon, maxLength: float) -> list[L
             # graphics.clear()
             # graphics.plotGeometries(sites, color="white")
             # graphics.plotGeometries([e.line for e in edges], color="red")
+            # graphics.plotGeometries([newEdge], color="orange")
+            # graphics.plotGeometries([e.line for e in otherPointEdges], color="green")
             # graphics.plt.waitforbuttonpress()
+
+            newEdgeMid = (newEdge.end + newEdge.start) / 2
+            projectionVector = newEdge.vector()
+            projectionVector /= projectionVector.modulus()
+            projectionVector = Vector2D(-projectionVector.y, projectionVector.x)
+            if projectionVector.dot(p - newEdgeMid) > 0:
+                projectionVector *= -1
+
+            for e in otherPointEdges:
+                if  projectionVector.dot(e.line.start - newEdgeMid) < 0 and\
+                    projectionVector.dot(e.line.end - newEdgeMid) < 0:
+                    edges.remove(e)
 
             if not unexploredSites: break
             otherPoint = unexploredSites.pop()
 
 
+    boundsCenter = sum(bounds.points) / len(bounds.points)
+    if not isinstance(boundsCenter, Vector2D):
+        boundsCenter = Vector2D(0,0)
+    boundEdges = bounds.breakAppart()
 
+    boundIntersections = sweepingLineIntersection([e.line for e in edges] + boundEdges)
+    for inter in boundIntersections:
+        edgeIndex = min(inter.between)
+        if edges[edgeIndex].line.start.distanceTo(boundsCenter) > edges[edgeIndex].line.end.distanceTo(boundsCenter):
+            edges[edgeIndex].line.start = inter.point
+        else:
+            edges[edgeIndex].line.end = inter.point
 
-    return [e.line for e in edges]
+    return [e.line for e in edges] + boundEdges
     
 
 

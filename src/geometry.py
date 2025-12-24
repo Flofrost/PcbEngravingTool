@@ -30,6 +30,9 @@ class Vector2D:
     def __add__(self, other: Vector2D) -> Vector2D:
         return Vector2D(self.x + other.x, self.y + other.y)
 
+    def __radd__(self, other) -> Vector2D:
+        return self.__add__(other) if isinstance(other, Vector2D) else self
+
     def __sub__(self, other: Vector2D) -> Vector2D:
         return Vector2D(self.x - other.x, self.y - other.y)
 
