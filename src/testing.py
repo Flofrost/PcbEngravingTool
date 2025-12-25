@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from geometry import  Line,  Polygon, Vector2D, Vector2DWithIndex, getBounds, sweepingLineIntersection
+from geometry import  Line,  Polygon, Vector2D, Vector2DWithIndex, getBounds, sweepingLineIntersection, basicallyZero
 from readers import extractGeometryDXF
 import graphics
 
@@ -48,7 +48,7 @@ polygons = [
 ]
 # with open("./testschema/test-F_Cu.dxf") as f:
 #     polygons = [p for p in extractGeometryDXF(f, "ya")[0].originalGeometries if isinstance(p, Polygon)]
-# polygons = [polygons[0]]
+# polygons = polygons[:4]
 for p in polygons: p.calculate_normals()
 
 boundsBottomLeft, boundsTopRight = getBounds(polygons, 20)
@@ -77,9 +77,8 @@ def voronoi(points: list[Vector2D], bounds: Polygon, maxLength: float) -> list[L
         line: Line
         bisects: tuple[int, int]
 
-
     if len(points) < 2: return []
-    if len(points) == 2: return [createBisector(points[0], points[1], maxLength), ]
+    if len(points) == 2: return [createBisector(points[0], points[1], maxLength)] + bounds.breakAppart()
 
     edges: list[VoronoiEdge] = [VoronoiEdge(
         createBisector(points[0], points[1], maxLength),
@@ -176,8 +175,8 @@ def voronoi(points: list[Vector2D], bounds: Polygon, maxLength: float) -> list[L
                 projectionVector *= -1
 
             for e in otherPointEdges:
-                if  projectionVector.dot(e.line.start - newEdgeMid) < 0 and\
-                    projectionVector.dot(e.line.end - newEdgeMid) < 0:
+                if  projectionVector.dot(e.line.start - newEdgeMid) < basicallyZero and\
+                    projectionVector.dot(e.line.end - newEdgeMid) < basicallyZero:
                     edges.remove(e)
                     intersectedSites.add(e.bisects[0])
                     intersectedSites.add(e.bisects[1])
@@ -211,10 +210,8 @@ def voronoi(points: list[Vector2D], bounds: Polygon, maxLength: float) -> list[L
 
 
 
-
-
-graphics.plt.ion()
-graphics.plt.show()
+# graphics.plt.ion()
+# graphics.plt.show()
 pointsBucket = [p for pl in polygons for p in pl.points]
 voronoiEdges = voronoi(pointsBucket, boundingBox, boundLength * 2)
 graphics.clear()

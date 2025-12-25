@@ -38,6 +38,13 @@ def extractGeometryDXF(inputFile: TextIO, outputFileName: str, tolerance: float 
             polygons.append(Polygon([line.start]))
         previousLine = line
 
+    for p in polygons:
+        i = 0
+        while i < len(p.points):
+            if p.points[i-1].distanceTo(p.points[i]) < tolerance:
+                p.points.pop(i)
+            i += 1
+
     return [File(outputFileName, polygons, [])]
 
 def extractGeometryDRL(inputFile: TextIO, outputFileName: str, _) -> Sequence[File]:
