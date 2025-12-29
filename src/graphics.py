@@ -5,11 +5,15 @@ import matplotlib.pyplot as plt
 from geometry import Geometry, Line, Polygon, Vector2D 
 
 plt.style.use("dark_background")
+plt.set_loglevel("critical")
 fig, ax = plt.subplots()
 ax.axis("equal")
+ax.axis(False)
 ax.scatter(0, 0, marker="+", color="red")
 normalScaleFactor = 1/15
 pauseLength: float = -1
+xlim = None
+ylim = None
 
 def plotGeometries(geometries: Sequence[Geometry], color = None, format="-"):
     for g in geometries:
@@ -57,7 +61,10 @@ def plotLinesRainbow(lines: list[Line]):
         )
 
 def show(): plt.show(block=True)
-def clear(): ax.clear()
+def clear():
+    ax.clear()
+    if xlim: ax.set_xlim(xlim)
+    if ylim: ax.set_ylim(ylim)
 def pause():
     if pauseLength < 0: input("-=- Press Enter -=-")
     else: plt.pause(pauseLength)
