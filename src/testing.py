@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from geometry import  Line,  Polygon, Vector2D, Vector2DWithIndex, getBounds, nearZero_precise, nearZero_tolerance, sweepingLineIntersection, tolerance
 from readers import extractGeometryDXF
+from array import array
 import graphics
 
 polygons = [
@@ -49,7 +50,7 @@ polygons = [
 # with open("../Karaoke/schematic/Karaoke-F_Cu.dxf") as f:
 with open("./testschema/test-F_Cu.dxf") as f:
     polygons = [p for p in extractGeometryDXF(f, "ya")[0].originalGeometries if isinstance(p, Polygon)]
-polygons = polygons[:1]
+# polygons = polygons[:1]
 for p in polygons: p.calculate_normals()
 
 boundsBottomLeft, boundsTopRight = getBounds(polygons, 0.20)
@@ -82,7 +83,7 @@ def noiseUp(points: list[Vector2D], amount: float) -> list[Vector2D]:
         for p in points
     ]
 
-def voronoi(points: list[Vector2D], bounds: Polygon) -> list[Line]:
+def voronoi_insert(points: list[Vector2D], bounds: Polygon) -> list[Line]:
     @dataclass
     class VoronoiEdge:
         line: Line
@@ -236,6 +237,54 @@ def voronoi(points: list[Vector2D], bounds: Polygon) -> list[Line]:
 
     return [e.line for e in edges] + boundEdges
     
+def voronoi_raster(points: list[Vector2D], bounds: Polygon, precision: int = 200) -> list[Line]:
+    boundsBL, boundsTR = getBounds([bounds])
+
+    xspan = boundsTR.x - boundsBL.x
+    yspan = boundsTR.y - boundsBL.y
+
+    quantum = min(xspan, yspan) / precision
+
+    xlen = int(xspan / quantum)
+    ylen = int(yspan / quantum)
+
+    pixmap = array("I", [0 for _ in range(xlen * ylen)])
+
+    def coord2pixspace(point: Vector2D) -> int:
+        xIndex = int((point.x - boundsBL.x) / xspan * xlen)
+        yIndex = int((point.y - boundsBL.y) / yspan * ylen)
+        return yIndex * xlen + xIndex
+
+    def pixspace2coord(index: int) -> Vector2D:
+        xIndex = index % xlen
+        xIndex /= xlen
+        xIndex *= xspan
+        xIndex += boundsBL.x
+
+        yIndex = index // ylen
+        yIndex /= ylen
+        yIndex *= yspan
+        yIndex += boundsBL.y
+
+        return Vector2D(xIndex, yIndex)
+
+    for i in range(len(pixmap)):
+        print(f"\r{i}/{len(pixmap)}", end="")
+        distances = [(pixspace2coord(i).distanceTo(point), idx) for idx, point in enumerate(points)]
+        closestPoint = min(distances, key=lambda d: d[0])
+        pixmap[i] = closestPoint[1]
+
+    graphics.ax.clear()
+    graphics.ax.imshow(
+        [[pixmap[y*xlen+x] for x in range(xlen)] for y in range(ylen)],
+        aspect=xspan/yspan,
+        origin="lower",
+        cmap=graphics.colormaps["prism"]
+    )
+    graphics.pause()
+
+
+    return []
 
 
 graphics.plt.ion()
@@ -244,9 +293,9 @@ graphics.xlim = (boundsBottomLeft.x, boundsTopRight.x)
 graphics.ylim = (boundsBottomLeft.y, boundsTopRight.y)
 pointsBucket = [p for pl in polygons for p in pl.points] 
 # pointsBucket = noiseUp([p for pl in polygons for p in pl.points], 0.02)
-voronoiEdges = voronoi(pointsBucket, boundingBox)
+# voronoiEdges = voronoi_insert(pointsBucket, boundingBox)
+voronoiEdges = voronoi_raster(pointsBucket, boundingBox)
 graphics.clear()
-graphics.plotGeometries([boundingBox], color="gray", format="--")
 graphics.plotGeometries(pointsBucket, color="white")
 graphics.plotGeometries(voronoiEdges, color="red")
 # graphics.plotGeometries(bigPoly, color="green")
