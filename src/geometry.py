@@ -121,7 +121,10 @@ class Line:
 
         derterminent = selfVect.cross(otherVect)
         if nearZero_precise(derterminent):
-            print("COLINEAR:", self, other)
+            if self.pointOnLine(other.start): return other.start
+            if self.pointOnLine(other.end): return other.end
+            if other.pointOnLine(self.start): return self.start
+            if other.pointOnLine(self.end): return self.end
             return
 
         coefficientVector = Vector2D(
@@ -352,16 +355,19 @@ def transformGeometries(geometries: Sequence[Geometry], settings: GeometrySettig
     return newGeometries
 
 def sweepingLineIntersection(lines: Sequence[Line]) -> set[Intersection]:
-    sortedLines: list[LineWithIndex] = [
-        LineWithIndex(Line(line.start, line.end), i)
+    class SweepedLine(LineWithIndex):
+        checkedAgainst: set[int] = set()
+
+    sortedLines: list[SweepedLine] = [
+        SweepedLine(Line(line.start, line.end), i)
         if line.start.x < line.end.x else
-        LineWithIndex(Line(line.end, line.start), i)
+        SweepedLine(Line(line.end, line.start), i)
         for i, line in enumerate(lines)
     ]
     sortedLines.sort(key=lambda sl: sl.line.start.x)
 
     intersections: set[Intersection] = set()
-    evaluationBucket: list[LineWithIndex] = []
+    evaluationBucket: list[SweepedLine] = []
     for sl in sortedLines:
         elementsToRemove = [
             e
@@ -373,6 +379,8 @@ def sweepingLineIntersection(lines: Sequence[Line]) -> set[Intersection]:
         evaluationBucket.append(sl)
         for i, evaluee1 in enumerate(evaluationBucket[:-1]):
             for evaluee2 in evaluationBucket[i+1:]:
+                if evaluee2.index in evaluee1.checkedAgainst: continue
+                evaluee1.checkedAgainst.add(evaluee2.index)
                 intersection = evaluee1.line.intersects(evaluee2.line, True)
                 if intersection is None: continue
                 intersections.add(Intersection(intersection, (evaluee1.index, evaluee2.index)))
