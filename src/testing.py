@@ -1,7 +1,7 @@
 from dataclasses import dataclass
-from geometry import  Line,  Polygon, Vector2D, Vector2DWithIndex, getBounds, nearZero_precise, nearZero_tolerance, sweepingLineIntersection, tolerance
+from typing import Sequence
+from geometry import  Geometry, Line, PixelMap,  Polygon, Vector2D, Vector2DWithIndex, getBounds, interpolateGeometry, nearZero_precise, sweepingLineIntersection
 from readers import extractGeometryDXF
-from array import array
 import graphics
 
 polygons = [
@@ -47,10 +47,10 @@ polygons = [
         Vector2D(220, 474)
     ])
 ]
-# with open("../Karaoke/schematic/Karaoke-F_Cu.dxf") as f:
-with open("./testschema/test-F_Cu.dxf") as f:
+with open("../Karaoke/schematic/Karaoke-B_Cu.dxf") as f:
+# with open("./testschema/test-F_Cu.dxf") as f:
     polygons = [p for p in extractGeometryDXF(f, "ya")[0].originalGeometries if isinstance(p, Polygon)]
-# polygons = polygons[:1]
+# polygons = polygons[:3]
 for p in polygons: p.calculate_normals()
 
 boundsBottomLeft, boundsTopRight = getBounds(polygons, 0.20)
@@ -237,54 +237,100 @@ def voronoi_insert(points: list[Vector2D], bounds: Polygon) -> list[Line]:
 
     return [e.line for e in edges] + boundEdges
     
-def voronoi_raster(points: list[Vector2D], bounds: Polygon, precision: int = 200) -> list[Line]:
-    boundsBL, boundsTR = getBounds([bounds])
+def voronoi_raster(geometries: Sequence[Geometry], precision: int = 200) -> PixelMap:
+    from random import random, shuffle
 
-    xspan = boundsTR.x - boundsBL.x
-    yspan = boundsTR.y - boundsBL.y
+    boundsBL, boundsTR = getBounds(geometries, 1)
+    pixmap = PixelMap(boundsBL, boundsTR, precision)
 
-    quantum = min(xspan, yspan) / precision
+    cornerPopulationChance = 0.3
+    edgePopulationChance = 0.8
 
-    xlen = int(xspan / quantum)
-    ylen = int(yspan / quantum)
+    pixelsToCalculate: set[int] = set()
+    points: list[Vector2DWithIndex] = [
+        Vector2DWithIndex(p, i)
+        for i, g in enumerate(geometries)
+        for p in interpolateGeometry(g, (boundsTR - boundsBL).modulus() / precision)
+    ]
+    print(len(points))
 
-    pixmap = array("I", [0 for _ in range(xlen * ylen)])
+    for pi in points:
+        pixmap[pi.point] = pi.index + 1
+        pixelsToCalculate.add(pixmap.vectorToIndex(pi.point))
 
-    def coord2pixspace(point: Vector2D) -> int:
-        xIndex = int((point.x - boundsBL.x) / xspan * xlen)
-        yIndex = int((point.y - boundsBL.y) / yspan * ylen)
-        return yIndex * xlen + xIndex
+    while True:
+        operations: list[tuple[int, int]] = []
 
-    def pixspace2coord(index: int) -> Vector2D:
-        xIndex = index % xlen
-        xIndex /= xlen
-        xIndex *= xspan
-        xIndex += boundsBL.x
+        for i in pixelsToCalculate:
 
-        yIndex = index // ylen
-        yIndex /= ylen
-        yIndex *= yspan
-        yIndex += boundsBL.y
+            x, y = pixmap.indexToCoords(i)
+            pixelSurrounded = 0
 
-        return Vector2D(xIndex, yIndex)
+            if x > 0 and not pixmap[x-1, y]:
+                if random() < edgePopulationChance:
+                    operations.append((pixmap.coordsToIndex(x-1, y), pixmap[i]))
+            else: pixelSurrounded += 1
 
-    for i in range(len(pixmap)):
-        print(f"\r{i}/{len(pixmap)}", end="")
-        distances = [(pixspace2coord(i).distanceTo(point), idx) for idx, point in enumerate(points)]
-        closestPoint = min(distances, key=lambda d: d[0])
-        pixmap[i] = closestPoint[1]
+            if x < pixmap.xlen-1 and not pixmap[x+1, y]:
+                if random() < edgePopulationChance:
+                    operations.append((pixmap.coordsToIndex(x+1, y), pixmap[i]))
+            else: pixelSurrounded += 1
 
-    graphics.ax.clear()
-    graphics.ax.imshow(
-        [[pixmap[y*xlen+x] for x in range(xlen)] for y in range(ylen)],
-        aspect=xspan/yspan,
-        origin="lower",
-        cmap=graphics.colormaps["prism"]
-    )
-    graphics.pause()
+            if y > 0 and not pixmap[x, y-1]:
+                if random() < edgePopulationChance:
+                    operations.append((pixmap.coordsToIndex(x, y-1), pixmap[i]))
+            else: pixelSurrounded += 1
+
+            if y < pixmap.ylen-1 and not pixmap[x, y+1]:
+                if random() < edgePopulationChance:
+                    operations.append((pixmap.coordsToIndex(x, y+1), pixmap[i]))
+            else: pixelSurrounded += 1
+
+            if x > 0 and y > 0 and not pixmap[x-1, y-1]:
+                if random() < cornerPopulationChance:
+                    operations.append((pixmap.coordsToIndex(x-1, y-1), pixmap[i]))
+            else: pixelSurrounded += 1
+
+            if x > 0 and y < pixmap.ylen-1 and not pixmap[x-1, y+1]:
+                if random() < cornerPopulationChance:
+                    operations.append((pixmap.coordsToIndex(x-1, y+1), pixmap[i]))
+            else: pixelSurrounded += 1
+
+            if x < pixmap.xlen-1 and y > 0 and not pixmap[x+1, y-1]:
+                if random() < cornerPopulationChance:
+                    operations.append((pixmap.coordsToIndex(x+1, y-1), pixmap[i]))
+            else: pixelSurrounded += 1
+
+            if x < pixmap.xlen-1 and y < pixmap.ylen-1 and not pixmap[x+1, y+1]:
+                if random() < cornerPopulationChance:
+                    operations.append((pixmap.coordsToIndex(x+1, y+1), pixmap[i]))
+            else: pixelSurrounded += 1
+
+            if pixelSurrounded >= 8:
+                operations.append((i, 0))
 
 
-    return []
+        shuffle(operations)
+        for i, v in operations:
+            if v:
+                pixmap[i] = v
+                pixelsToCalculate.add(i)
+            else:
+                pixelsToCalculate.remove(i)
+
+        print(len(pixelsToCalculate))
+
+        if not pixelsToCalculate: break
+
+    for i, _ in enumerate(pixmap):
+        pixmap[i] -= 1
+
+    # graphics.clear()
+    # graphics.plotPixelmap(pixmap)
+    # graphics.plotGeometries([p.point for p in points], color="black")
+    # graphics.pause()
+
+    return pixmap
 
 
 graphics.plt.ion()
@@ -294,10 +340,11 @@ graphics.ylim = (boundsBottomLeft.y, boundsTopRight.y)
 pointsBucket = [p for pl in polygons for p in pl.points] 
 # pointsBucket = noiseUp([p for pl in polygons for p in pl.points], 0.02)
 # voronoiEdges = voronoi_insert(pointsBucket, boundingBox)
-voronoiEdges = voronoi_raster(pointsBucket, boundingBox)
-graphics.clear()
-graphics.plotGeometries(pointsBucket, color="white")
-graphics.plotGeometries(voronoiEdges, color="red")
+voronoiEdges = voronoi_raster(polygons, 300)
+# graphics.clear()
+# graphics.plotGeometries(pointsBucket, color="black")
+graphics.plotPixelmap(voronoiEdges, "prism")
+# graphics.plotGeometries(voronoiEdges, color="red")
 # graphics.plotGeometries(bigPoly, color="green")
 # graphics.normalScaleFactor = 1/2
 # graphics.plotVertexNormals(polygons, color="pink")

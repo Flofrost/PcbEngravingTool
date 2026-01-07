@@ -2,7 +2,7 @@ from typing import Sequence
 from matplotlib import colormaps
 import matplotlib.pyplot as plt
 
-from geometry import Geometry, Line, Polygon, Vector2D 
+from geometry import Geometry, Line, PixelMap, Polygon, Vector2D 
 
 plt.style.use("dark_background")
 plt.set_loglevel("critical")
@@ -59,6 +59,19 @@ def plotLinesRainbow(lines: list[Line]):
             [l.start.y, l.end.y],
             color=colormaps["hsv"](5*i/len(lines)%1)
         )
+
+def plotPixelmap(pixmap: PixelMap, colormap: str = "hsv"):
+    ax.imshow(
+        [[pixmap[x, y] for x in range(pixmap.xlen)] for y in range(pixmap.ylen)],
+        extent=(
+            pixmap.origin.x,
+            pixmap.origin.x + pixmap.xspan,
+            pixmap.origin.y,
+            pixmap.origin.y + pixmap.yspan,
+        ),
+        origin="lower",
+        cmap=colormaps[colormap]
+    )
 
 def show(): plt.show(block=True)
 def clear():

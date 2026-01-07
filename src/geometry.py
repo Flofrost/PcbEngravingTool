@@ -1,5 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
+from array import array
 from math import cos, pi, sin, sqrt, atan
 from typing import Literal, Sequence
 
@@ -91,6 +92,9 @@ class Line:
     def __hash__(self) -> int:
         return hash(hash(self.start) + hash(self.end))
 
+    def lerp(self, distance: float) -> LerpLine:
+        return LerpLine(self, distance)
+
     def length(self) -> float:
         return self.start.distanceTo(self.end)
 
@@ -153,6 +157,11 @@ class Line:
             self.start = trimPoint
         else:
             self.end = trimPoint
+
+@dataclass
+class LineWithIndex:
+    line: Line
+    index: int
 
 @dataclass
 class Polygon:
@@ -296,6 +305,97 @@ class Polygon:
 
         return newPolygon
 
+class PixelMap:
+    origin: Vector2D
+    xspan: float
+    yspan: float
+    xlen: int
+    ylen: int
+    map: array[int]
+
+    def __init__(self, boundBottomLeft: Vector2D, boundTopRight: Vector2D, numberSidePixels: int = 200) -> None:
+        self.origin = boundBottomLeft
+        self.xspan = boundTopRight.x - boundBottomLeft.x
+        self.yspan = boundTopRight.y - boundBottomLeft.y
+
+        quantum = min(self.xspan, self.yspan) / numberSidePixels
+
+        self.xlen = int(self.xspan / quantum)
+        self.ylen = int(self.yspan / quantum)
+
+        self.map = array("I", b"\x00\x00\x00\x00" * self.xlen * self.ylen)
+
+    def __getitem__(self, key: int | tuple[int, int] | Vector2D) -> int:
+        if isinstance(key, int):
+            return self.map[key]
+        
+        if isinstance(key, tuple) :
+            if not list(map(type, key)) == [int, int]:
+                raise Exception("Accessing pixmaps can only be done using indices (int), pair or indicies (int, int), or a point (Vector2D)")
+
+            return self.map[key[1] * self.xlen + key[0]]
+
+        return self.map[self.vectorToIndex(key)]
+
+    def __setitem__(self, key: int | tuple[int, int] | Vector2D, value: int):
+        if isinstance(key, int):
+            self.map[key] = value
+            return
+        
+        if isinstance(key, tuple) :
+            if not list(map(type, key)) == [int, int]:
+                raise Exception("Accessing pixmaps can only be done using indices (int), pair or indicies (int, int), or a point (Vector2D)")
+
+            self.map[key[1] * self.xlen + key[0]] = value
+            return
+
+        self.map[self.vectorToIndex(key)] = value
+
+    def __iter__(self):
+        self.iterationIndex = 0
+        return self
+
+    def __next__(self):
+        if self.iterationIndex < len(self.map):
+            self.iterationIndex += 1
+            return self.map[self.iterationIndex - 1]
+        raise StopIteration
+
+    def __repr__(self) -> str:
+        s = "PixelMap=("
+        s += f"origin={self.origin},"
+        s += f"xspan={self.xspan},"
+        s += f"yspan={self.yspan},"
+        s += f"xlen={self.xlen},"
+        s += f"ylen={self.ylen},"
+        # s += f"map={self.map}"
+        s += f"mapLength={len(self.map)},"
+        return s + ")"
+
+    def vectorToIndex(self, point: Vector2D) -> int:
+        xIndex = int((point.x - self.origin.x) / self.xspan * self.xlen)
+        yIndex = int((point.y - self.origin.y) / self.yspan * self.ylen)
+        return yIndex * self.xlen + xIndex
+
+    def coordsToIndex(self, x: int, y: int) -> int:
+        return y * self.xlen + x
+
+    def indexToVector(self, index: int) -> Vector2D:
+        xIndex = index % self.xlen
+        xIndex /= self.xlen
+        xIndex *= self.xspan
+        xIndex += self.origin.x
+
+        yIndex = index // self.xlen
+        yIndex /= self.ylen
+        yIndex *= self.yspan
+        yIndex += self.origin.y
+
+        return Vector2D(xIndex, yIndex)
+
+    def indexToCoords(self, index: int) -> tuple[int, int]:
+        return (index % self.xlen, index // self.xlen)
+
 Geometry =  Polygon | Line | Vector2D
 
 @dataclass
@@ -309,10 +409,27 @@ class Intersection:
     def __hash__(self) -> int:
         return hash(self.point.__hash__() + self.between.__hash__())
 
-@dataclass
-class LineWithIndex:
-    line: Line
-    index: int
+class LerpLine:
+    start: Vector2D
+    direction: Vector2D
+    step: float
+    t: float = 0
+
+    def __init__(self, line: Line, step: float) -> None:
+        self.start = line.start
+        self.direction = line.vector()
+        self.step = step / line.length()
+        pass
+
+    def __iter__(self) -> LerpLine:
+        self.t = 0
+        return self
+
+    def __next__(self) -> Vector2D:
+        if self.t > 1: raise StopIteration 
+        newPoint = self.start + self.direction * self.t
+        self.t += self.step
+        return newPoint
 
 @dataclass
 class GeometrySettigs:
@@ -322,7 +439,6 @@ class GeometrySettigs:
     offset_x: float | None
     offset_y: float | None
     tolerance: float
-
 
 
 def transformGeometries(geometries: Sequence[Geometry], settings: GeometrySettigs) -> Sequence[Geometry]: 
@@ -408,4 +524,18 @@ def getBounds(geometries: Sequence[Geometry], padding: float = 0) -> tuple[Vecto
                 testPoint(p)
 
     return  minimum + Vector2D(-padding, -padding), maximum + Vector2D(padding, padding)
+
+def lerp():
+    ...
+
+def interpolateGeometry(geo: Geometry, quantum: float = tolerance) -> list[Vector2D]:
+    if isinstance(geo, Vector2D): return [geo]
+
+    if isinstance(geo, Line): return [p for p in geo.lerp(quantum)]
+
+    return [
+        p
+        for l in geo.breakAppart()
+        for p in l.lerp(quantum)
+    ]
 
